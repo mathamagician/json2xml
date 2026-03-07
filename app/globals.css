@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+  }
+}
+
+@layer components {
+  .editor-textarea {
+    @apply w-full h-full min-h-[400px] bg-slate-900 text-slate-100 font-mono text-sm
+           border border-slate-700 rounded-lg p-4 resize-none outline-none
+           focus:border-brand-500 focus:ring-1 focus:ring-brand-500
+           placeholder:text-slate-600 transition-colors;
+  }
+
+  .panel-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-slate-400;
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-500 active:bg-brand-700
+           text-white font-semibold px-6 py-2.5 rounded-lg
+           transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply text-slate-400 hover:text-slate-100 hover:bg-slate-800
+           px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+}
