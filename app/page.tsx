@@ -18,7 +18,7 @@ export default function Home() {
           </div>
 
           <a
-            href="https://buymeacoffee.com/REPLACE_ME"
+            href="https://buymeacoffee.com/mathamagician"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg transition-colors"
@@ -81,7 +81,7 @@ export default function Home() {
         <p>
           json2xml.com — built with ☕ |{" "}
           <a
-            href="https://buymeacoffee.com/REPLACE_ME"
+            href="https://buymeacoffee.com/mathamagician"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-slate-400 underline"
