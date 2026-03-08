@@ -5,8 +5,13 @@ import { jsonToXml, xmlToJson, detectFormat, outputFilename, type Format } from 
 
 type Direction = "json-to-xml" | "xml-to-json";
 
-const WORKER_THRESHOLD = 512 * 1024; // 512 KB — use worker above this
-const SIZE_WARN_BYTES = 50 * 1024 * 1024; // 50 MB — show advisory banner
+// Thresholds
+const WORKER_THRESHOLD = 512 * 1024;       // 512 KB — use worker for typed/pasted text
+const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;  // 5 MB — read file in worker, don't touch main thread
+const TEXTAREA_MAX = 10 * 1024 * 1024;     // 10 MB — don't render output in textarea, show download-only
+const SIZE_WARN_BYTES = 50 * 1024 * 1024;  // 50 MB — show advisory banner
+
+type Progress = { phase: "reading" | "converting"; percent: number };
 
 function formatLabel(f: Format) {
   return f.toUpperCase();
@@ -26,18 +31,22 @@ export default function Converter() {
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [hasLargeOutput, setHasLargeOutput] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const largeOutputRef = useRef<string | null>(null);
+  // Hold File ref for large files so direction-change can re-convert
+  const currentFileRef = useRef<File | null>(null);
 
   const sourceFormat: Format = direction === "json-to-xml" ? "json" : "xml";
   const targetFormat: Format = direction === "json-to-xml" ? "xml" : "json";
 
-  // Terminate worker and clear debounce on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       workerRef.current?.terminate();
@@ -45,106 +54,167 @@ export default function Converter() {
     };
   }, []);
 
-  const convert = useCallback(
-    (text: string, dir: Direction) => {
-      if (!text.trim()) {
+  const getWorker = useCallback(() => {
+    if (!workerRef.current) {
+      workerRef.current = new Worker(
+        new URL("../lib/converter.worker.ts", import.meta.url)
+      );
+    }
+    return workerRef.current;
+  }, []);
+
+  // Apply worker result — shared by both conversion paths
+  const applyResult = useCallback((result: string | null, err: string | null) => {
+    setProgress(null);
+    if (err) {
+      setError(err);
+      setOutput("");
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+    } else if (result !== null) {
+      setError(null);
+      if (result.length > TEXTAREA_MAX) {
+        // Too large for textarea — store in ref, show download-only overlay
+        largeOutputRef.current = result;
+        setHasLargeOutput(true);
         setOutput("");
-        setError(null);
-        setIsProcessing(false);
+      } else {
+        setOutput(result);
+        setHasLargeOutput(false);
+        largeOutputRef.current = null;
+      }
+    }
+  }, []);
+
+  // Wire up worker message handler with current request id
+  const attachWorkerHandler = useCallback((id: number) => {
+    const worker = getWorker();
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.id !== id) return; // stale response
+      if (msg.type === "progress") {
+        setProgress({ phase: msg.phase, percent: msg.percent });
         return;
       }
+      applyResult(msg.result, msg.error);
+    };
+    return worker;
+  }, [getWorker, applyResult]);
 
-      if (text.length > WORKER_THRESHOLD) {
-        // Large input — route through Web Worker
-        setIsProcessing(true);
-        setError(null);
+  // Large file: send File object to worker — no main-thread reading, no textarea population
+  const convertLargeFile = useCallback((file: File, dir: Direction) => {
+    setOutput("");
+    setError(null);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+    setProgress({ phase: "reading", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert-file", id, file, direction: dir });
+  }, [attachWorkerHandler]);
 
-        if (!workerRef.current) {
-          workerRef.current = new Worker(
-            new URL("../lib/converter.worker.ts", import.meta.url)
-          );
-        }
+  // Text conversion via worker (for large pasted/typed text)
+  const convertViaWorker = useCallback((text: string, dir: Direction) => {
+    setProgress({ phase: "converting", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert", id, text, direction: dir });
+  }, [attachWorkerHandler]);
 
-        const id = ++requestIdRef.current;
+  // Sync conversion for small text (instant, no spinner)
+  const convertSync = useCallback((text: string, dir: Direction) => {
+    setProgress(null);
+    try {
+      const result = dir === "json-to-xml" ? jsonToXml(text) : xmlToJson(text);
+      setOutput(result);
+      setError(null);
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+    } catch (e) {
+      setError((e as Error).message);
+      setOutput("");
+    }
+  }, []);
 
-        workerRef.current.onmessage = (
-          e: MessageEvent<{ id: number; result: string | null; error: string | null }>
-        ) => {
-          if (e.data.id !== id) return; // stale response — ignore
-          setIsProcessing(false);
-          if (e.data.error) {
-            setError(e.data.error);
-            setOutput("");
-          } else {
-            setOutput(e.data.result!);
-            setError(null);
-          }
-        };
+  // Main convert dispatcher for text input
+  const convert = useCallback((text: string, dir: Direction) => {
+    if (!text.trim()) {
+      setOutput("");
+      setError(null);
+      setProgress(null);
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+      return;
+    }
+    if (text.length > WORKER_THRESHOLD) {
+      convertViaWorker(text, dir);
+    } else {
+      convertSync(text, dir);
+    }
+  }, [convertViaWorker, convertSync]);
 
-        workerRef.current.postMessage({ id, text, direction: dir });
-      } else {
-        // Small input — convert synchronously (instant)
-        setIsProcessing(false);
-        try {
-          const result =
-            dir === "json-to-xml" ? jsonToXml(text) : xmlToJson(text);
-          setOutput(result);
-          setError(null);
-        } catch (e) {
-          setError((e as Error).message);
-          setOutput("");
-        }
-      }
-    },
-    []
-  );
-
-  // Re-convert whenever direction changes (if there's input)
+  // Re-convert on direction change
   useEffect(() => {
-    if (input.trim()) convert(input, direction);
+    if (currentFileRef.current && currentFileRef.current.size > FILE_WORKER_THRESHOLD) {
+      convertLargeFile(currentFileRef.current, direction);
+    } else if (input.trim()) {
+      convert(input, direction);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direction]);
 
   const handleInputChange = (text: string) => {
     setInput(text);
-
-    // Cancel any pending debounced conversion
+    // User is typing — clear any file context
+    currentFileRef.current = null;
+    setFileSize(null);
+    setFileName(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    // Debounce large inputs (300ms) to avoid spamming the worker while pasting
     const delay = text.length > WORKER_THRESHOLD ? 300 : 0;
     debounceRef.current = setTimeout(() => convert(text, direction), delay);
   };
 
   const handleFlip = () => {
-    const newDir: Direction =
-      direction === "json-to-xml" ? "xml-to-json" : "json-to-xml";
+    const newDir: Direction = direction === "json-to-xml" ? "xml-to-json" : "json-to-xml";
     setInput(output);
+    currentFileRef.current = null;
     setDirection(newDir);
-    // convert will fire via useEffect
   };
 
   const handleAutoDetect = () => {
     const detected = detectFormat(input);
     if (!detected) return;
-    const newDir: Direction =
-      detected === "json" ? "json-to-xml" : "xml-to-json";
-    setDirection(newDir);
+    setDirection(detected === "json" ? "json-to-xml" : "xml-to-json");
   };
 
   const handleFile = (file: File) => {
     setFileName(file.name);
     setFileSize(file.size);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) ?? "";
-      // Auto-detect direction from file extension
-      if (file.name.endsWith(".json")) setDirection("json-to-xml");
-      else if (file.name.endsWith(".xml")) setDirection("xml-to-json");
-      setInput(text);
-      convert(text, direction);
-    };
-    reader.readAsText(file);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+
+    const newDir: Direction = file.name.endsWith(".json")
+      ? "json-to-xml"
+      : file.name.endsWith(".xml")
+      ? "xml-to-json"
+      : direction;
+    if (newDir !== direction) setDirection(newDir);
+
+    if (file.size > FILE_WORKER_THRESHOLD) {
+      // Large file: keep textarea empty, read + convert entirely in worker
+      currentFileRef.current = file;
+      setInput("");
+      convertLargeFile(file, newDir);
+    } else {
+      currentFileRef.current = null;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = (e.target?.result as string) ?? "";
+        setInput(text);
+        convert(text, newDir);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleDrop = useCallback(
@@ -165,7 +235,8 @@ export default function Converter() {
   };
 
   const handleDownload = () => {
-    const blob = new Blob([output], { type: "text/plain" });
+    const content = largeOutputRef.current ?? output;
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -180,9 +251,17 @@ export default function Converter() {
     setError(null);
     setFileName(null);
     setFileSize(null);
-    setIsProcessing(false);
+    setProgress(null);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+    currentFileRef.current = null;
     if (debounceRef.current) clearTimeout(debounceRef.current);
   };
+
+  const isProcessing = progress !== null;
+  const hasOutput = output.length > 0 || hasLargeOutput;
+  // Show a "file loaded" overlay on input textarea for large files
+  const showFileOverlay = fileSize !== null && fileSize > FILE_WORKER_THRESHOLD;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -229,7 +308,7 @@ export default function Converter() {
           ⇄ Flip
         </button>
 
-        {input && (
+        {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
             Clear
           </button>
@@ -293,6 +372,13 @@ export default function Converter() {
               onChange={(e) => handleInputChange(e.target.value)}
               spellCheck={false}
             />
+            {/* Large file loaded — don't render content in textarea */}
+            {showFileOverlay && !isDragging && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 rounded-lg pointer-events-none gap-1">
+                <p className="text-slate-300 font-medium text-sm">{fileName}</p>
+                <p className="text-slate-500 text-xs">{formatSize(fileSize!)} loaded</p>
+              </div>
+            )}
             {isDragging && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 rounded-lg pointer-events-none">
                 <p className="text-brand-400 font-semibold">Drop file here</p>
@@ -305,20 +391,14 @@ export default function Converter() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="panel-label">{formatLabel(targetFormat)} Output</span>
-            {output && (
+            {hasOutput && !isProcessing && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCopy}
-                  disabled={isProcessing}
-                  className="btn-ghost text-xs disabled:opacity-40"
-                >
-                  {copied ? "✓ Copied!" : "Copy"}
-                </button>
-                <button
-                  onClick={handleDownload}
-                  disabled={isProcessing}
-                  className="btn-ghost text-xs disabled:opacity-40"
-                >
+                {output && (
+                  <button onClick={handleCopy} className="btn-ghost text-xs">
+                    {copied ? "✓ Copied!" : "Copy"}
+                  </button>
+                )}
+                <button onClick={handleDownload} className="btn-ghost text-xs">
                   Download
                 </button>
               </div>
@@ -333,12 +413,46 @@ export default function Converter() {
               readOnly
               spellCheck={false}
             />
+
+            {/* Progress overlay (reading + converting) */}
             {isProcessing && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 rounded-lg">
-                <div className="w-8 h-8 border-2 border-slate-600 border-t-sky-500 rounded-full animate-spin mb-3" />
-                <p className="text-slate-400 text-sm">Converting…</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-4 px-8">
+                <p className="text-slate-300 text-sm font-medium">
+                  {progress.phase === "reading" ? "Reading file…" : "Converting…"}
+                </p>
+                <div className="w-full max-w-xs flex flex-col gap-2">
+                  {progress.phase === "reading" ? (
+                    <>
+                      <div className="w-full bg-slate-700 rounded-full h-2">
+                        <div
+                          className="bg-sky-500 h-2 rounded-full transition-all duration-200"
+                          style={{ width: `${progress.percent}%` }}
+                        />
+                      </div>
+                      <p className="text-slate-500 text-xs text-center">{progress.percent}%</p>
+                    </>
+                  ) : (
+                    <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div className="h-2 bg-sky-500 rounded-full w-full animate-pulse" />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+
+            {/* Large output: download-only mode (too big to render in textarea) */}
+            {hasLargeOutput && !isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3">
+                <div className="text-sky-400 text-3xl">✓</div>
+                <p className="text-slate-200 font-semibold text-sm">Conversion complete</p>
+                <p className="text-slate-400 text-xs">Output is too large to preview</p>
+                <button onClick={handleDownload} className="btn-primary text-sm mt-1">
+                  Download {targetFormat.toUpperCase()}
+                </button>
+              </div>
+            )}
+
+            {/* Error overlay */}
             {!isProcessing && error && (
               <div className="absolute inset-0 flex items-start p-4 bg-red-950/40 rounded-lg border border-red-800">
                 <div>
