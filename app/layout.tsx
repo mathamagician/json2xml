@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://json2xml.com"),
   title: "JSON2XML — Free JSON ↔ XML Converter Online",
   description:
     "Convert JSON to XML or XML to JSON instantly in your browser. Free, private, no sign-up. No uploads, no servers — your data stays on your machine.",
@@ -41,7 +43,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+          {children}
+          <Analytics />
+        </body>
     </html>
   );
 }
