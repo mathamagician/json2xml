@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Converter from "@/components/Converter";
 
 const jsonLd = {
@@ -176,6 +177,10 @@ export default function Home() {
           >
             Support this tool
           </a>
+          {" "}|{" "}
+          <Link href="/privacy" className="hover:text-slate-400 underline">
+            Privacy Policy
+          </Link>
         </p>
       </footer>
     </div>
