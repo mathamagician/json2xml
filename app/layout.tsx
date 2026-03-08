@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
@@ -46,6 +47,12 @@ export default function RootLayout({
       <body className={inter.className}>
           {children}
           <Analytics />
+          <Script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5085230476314931"
+            crossOrigin="anonymous"
+            strategy="afterInteractive"
+          />
         </body>
     </html>
   );
