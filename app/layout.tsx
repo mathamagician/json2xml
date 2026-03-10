@@ -44,6 +44,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Google Analytics */}
+        <script async={true} src="https://www.googletagmanager.com/gtag/js?id=G-GSY3ECW9VC" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-GSY3ECW9VC');`,
+          }}
+        />
+        {/* Google AdSense */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
           async={true}
