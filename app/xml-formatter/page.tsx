@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 export const metadata: Metadata = {
   title: "Free XML Formatter & Beautifier Online — json2xml.com",
@@ -51,6 +52,17 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  { question: "What does an XML formatter do?", answer: "An XML formatter takes raw or minified XML and adds consistent indentation and line breaks so it's easy to read. It can also minify formatted XML by removing all unnecessary whitespace." },
+  { question: "Is this XML formatter free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits." },
+  { question: "Is my data safe?", answer: "All formatting happens locally in your browser using JavaScript. Your XML is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
+  { question: "Does it preserve XML attributes?", answer: "Yes — all attributes, namespaces, and comments are preserved during formatting and minification. The structure of your XML is never altered." },
+  { question: "What indentation options are available?", answer: "You can choose between 2 spaces, 4 spaces, or tabs. The default is 2 spaces." },
+  { question: "What's the difference between format and minify?", answer: "Formatting adds indentation and line breaks for readability. Minifying removes all unnecessary whitespace to produce the smallest possible output — useful for SOAP messages, config files, or reducing payload size." },
+  { question: "Does it validate my XML?", answer: "The formatter will show an error if your XML is malformed, but for detailed validation with line numbers, use the XML Validator at json2xml.com/xml-validator." },
+  { question: "Can I also convert XML to JSON?", answer: "Yes — use the XML to JSON converter at json2xml.com/xml-to-json to transform your XML into JSON format." },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -111,6 +123,10 @@ export default function XmlFormatter() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/xml-formatter" />

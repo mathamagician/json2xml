@@ -62,3 +62,19 @@ export function getRelatedTools(slug: string): ToolMeta[] {
     .map((s) => getToolBySlug(s))
     .filter((t): t is ToolMeta => t !== undefined);
 }
+
+// Generate FAQPage JSON-LD for rich snippets in Google
+export function faqJsonLd(items: { question: string; answer: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  };
+}

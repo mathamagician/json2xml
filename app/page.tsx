@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -19,6 +20,29 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  {
+    question: "Is this JSON to XML converter free?",
+    answer:
+      "Yes — completely free, forever. There's no sign-up, no account, and no usage limits. If you find it useful, a coffee is appreciated but never required.",
+  },
+  {
+    question: "Is my data safe?",
+    answer:
+      "All conversion happens locally in your browser using JavaScript. Your JSON or XML is never uploaded to any server. It's safe to use with sensitive or proprietary data.",
+  },
+  {
+    question: "What file types are supported?",
+    answer:
+      "You can upload or drag and drop .json, .xml, and .txt files. Output can be downloaded as .json or .xml.",
+  },
+  {
+    question: "Can it handle large files?",
+    answer:
+      "Yes — the tool handles files up to 500 MB. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
+  },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -55,6 +79,10 @@ export default function Home() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/" />

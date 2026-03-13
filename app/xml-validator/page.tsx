@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 export const metadata: Metadata = {
   title: "Free XML Validator Online — json2xml.com",
@@ -51,6 +52,17 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  { question: "What does an XML validator do?", answer: "An XML validator checks whether your XML is well-formed according to the XML specification. It catches unclosed tags, mismatched tag names, missing attributes, and other structural errors." },
+  { question: "Is this XML validator free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits." },
+  { question: "Is my data safe?", answer: "All validation happens locally in your browser using JavaScript. Your XML is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
+  { question: "Does it show where the error is?", answer: "Yes — when your XML is invalid, the validator shows the error message along with the line and column number where the problem was detected." },
+  { question: "What does 'well-formed' mean?", answer: "Well-formed XML follows basic syntax rules: every opening tag has a closing tag, tags are properly nested, attribute values are quoted, and special characters are escaped. This is different from schema validation, which checks whether the XML matches a specific schema (XSD)." },
+  { question: "Does it validate against an XSD schema?", answer: "No — this tool checks whether your XML is well-formed (syntactically correct). Schema validation against XSD or DTD requires server-side processing and is not supported in this privacy-first browser tool." },
+  { question: "What are common XML errors?", answer: "The most common XML errors are: unclosed tags, mismatched opening and closing tag names, unescaped ampersands or less-than signs in text content, missing quotes around attribute values, and duplicate attributes on the same element." },
+  { question: "Can I also format my XML?", answer: "Yes — use the XML Formatter at json2xml.com/xml-formatter to pretty-print or minify your XML with configurable indentation." },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -106,6 +118,10 @@ export default function XmlValidator() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/xml-validator" />

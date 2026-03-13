@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 export const metadata: Metadata = {
   title: "Free JSON Validator Online — json2xml.com",
@@ -51,6 +52,16 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  { question: "What does a JSON validator do?", answer: "A JSON validator checks whether your JSON is syntactically correct according to the JSON specification (RFC 8259). It catches missing commas, unclosed brackets, trailing commas, single quotes, and other common mistakes." },
+  { question: "Is this JSON validator free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits." },
+  { question: "Is my data safe?", answer: "All validation happens locally in your browser using JavaScript. Your JSON is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
+  { question: "Does it show where the error is?", answer: "Yes — when your JSON is invalid, the validator shows the error message along with the line and column number where the problem was detected, so you can find and fix it quickly." },
+  { question: "What are common JSON errors?", answer: "The most common JSON errors are: trailing commas after the last item, single quotes instead of double quotes, missing quotes around keys, unescaped special characters in strings, and comments (JSON doesn't support comments)." },
+  { question: "What's the difference between a validator and a linter?", answer: "A validator checks whether JSON is syntactically valid. A linter goes further and checks for style issues like inconsistent formatting. This tool is a validator — for formatting, use the JSON Formatter." },
+  { question: "Can I also format my JSON?", answer: "Yes — use the JSON Formatter at json2xml.com/json-formatter to pretty-print or minify your JSON with configurable indentation." },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -101,6 +112,10 @@ export default function JsonValidator() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/json-validator" />

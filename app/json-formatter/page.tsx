@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 export const metadata: Metadata = {
   title: "Free JSON Formatter & Beautifier Online — json2xml.com",
@@ -51,6 +52,16 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  { question: "What does a JSON formatter do?", answer: "A JSON formatter takes raw or minified JSON and adds consistent indentation and line breaks so it's easy to read. It can also minify formatted JSON by removing all whitespace, making it smaller for storage or transmission." },
+  { question: "Is this JSON formatter free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits. If you find it useful, a coffee is appreciated but never required." },
+  { question: "Is my data safe?", answer: "All formatting happens locally in your browser using JavaScript. Your JSON is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
+  { question: "What indentation options are available?", answer: "You can choose between 2 spaces, 4 spaces, or tabs. The default is 2 spaces, which is the most common convention in JavaScript and TypeScript projects." },
+  { question: "What's the difference between format and minify?", answer: "Formatting (beautifying) adds indentation and line breaks for readability. Minifying removes all unnecessary whitespace to produce the smallest possible output — useful for APIs, config files, or reducing payload size." },
+  { question: "Does it validate my JSON?", answer: "The formatter will show an error if your JSON is invalid, but for detailed validation with line numbers, use the JSON Validator at json2xml.com/json-validator." },
+  { question: "Can I also convert JSON to XML?", answer: "Yes — use the JSON to XML converter at json2xml.com to convert your formatted JSON into XML." },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -106,6 +117,10 @@ export default function JsonFormatter() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/json-formatter" />

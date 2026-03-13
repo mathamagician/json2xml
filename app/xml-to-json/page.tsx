@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import RelatedTools from "@/components/RelatedTools";
 import FaqSection, { type FaqItem } from "@/components/FaqSection";
+import { faqJsonLd } from "@/lib/tools";
 
 export const metadata: Metadata = {
   title: "Free XML to JSON Converter Online — json2xml.com",
@@ -51,6 +52,16 @@ const jsonLd = {
     priceCurrency: "USD",
   },
 };
+
+const faqSchemaItems = [
+  { question: "How do I convert XML to JSON?", answer: "Paste your XML into the input panel and the JSON output appears instantly — no button to click. You can also drag and drop an .xml file or use the upload button." },
+  { question: "Is this XML to JSON converter free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits. If you find it useful, a coffee is appreciated but never required." },
+  { question: "Is my XML data safe?", answer: "All conversion happens locally in your browser using JavaScript. Your XML is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
+  { question: "How are XML attributes handled?", answer: "XML attributes are preserved in the JSON output. By default, attributes are prefixed to distinguish them from child elements, keeping your data structure intact." },
+  { question: "Can it handle large XML files?", answer: "Yes — the tool handles files up to 500 MB. Large files are processed off the main thread using Web Workers, so the page stays fully responsive." },
+  { question: "What about XML namespaces?", answer: "Namespace prefixes are preserved in the JSON keys. For example, <soap:Envelope> becomes a key like \"soap:Envelope\" in the output." },
+  { question: "Can I convert JSON back to XML?", answer: "Yes — use the direction toggle to switch to JSON → XML mode, or visit the JSON to XML converter at json2xml.com. You can also use the Flip button to swap input and output in one click." },
+];
 
 const faqItems: FaqItem[] = [
   {
@@ -101,6 +112,10 @@ export default function XmlToJson() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd(faqSchemaItems)) }}
       />
 
       <Header currentSlug="/xml-to-json" />
