@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://json2xml.com"),
   title: "JSON2XML — Free JSON ↔ XML Converter Online",
   description:
-    "Convert JSON to XML or XML to JSON instantly in your browser. Free, private, no sign-up. No uploads, no servers — your data stays on your machine.",
+    "Convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 500 MB. Free, private, no sign-up — your data stays on your machine.",
   keywords: [
     "json to xml",
     "xml to json",

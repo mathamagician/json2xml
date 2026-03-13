@@ -7,7 +7,7 @@ const jsonLd = {
   name: "JSON2XML — Free JSON ↔ XML Converter",
   url: "https://json2xml.com",
   description:
-    "Free online tool to convert JSON to XML or XML to JSON instantly in your browser. No sign-up, no uploads — 100% private.",
+    "Free online tool to convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 500 MB. No sign-up, no uploads — 100% private.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Any",
   offers: {
@@ -57,7 +57,7 @@ export default function Home() {
             Free JSON ↔ XML Converter
           </h1>
           <p className="text-slate-400 max-w-xl mx-auto">
-            Paste, upload, or drag &amp; drop your data. Converts instantly in your
+            Paste, upload, or drag &amp; drop files up to 500 MB. Converts instantly in your
             browser —{" "}
             <strong className="text-slate-300">your data never leaves your machine.</strong>
           </p>
@@ -87,11 +87,11 @@ export default function Home() {
             </p>
           </div>
           <div>
-            <h3 className="text-slate-200 font-semibold mb-2">📁 File support</h3>
+            <h3 className="text-slate-200 font-semibold mb-2">📁 Files up to 500 MB</h3>
             <p>
               Drag and drop <code className="text-slate-300">.json</code> or{" "}
-              <code className="text-slate-300">.xml</code> files directly onto the
-              input panel. Download the result with one click.
+              <code className="text-slate-300">.xml</code> files up to 500 MB. Large files convert
+              off the main thread so the page stays responsive. Download the result with one click.
             </p>
           </div>
         </div>
@@ -155,9 +155,9 @@ export default function Home() {
               <div>
                 <dt className="text-slate-300 font-medium mb-1">Can it handle large files?</dt>
                 <dd>
-                  The tool handles most files comfortably. Very large files (hundreds of MB) may be slow
-                  depending on your device, as conversion runs on the main thread. Support for large files
-                  via Web Workers is planned.
+                  Yes — the tool handles files up to 500 MB. Large files are processed off the main thread
+                  using Web Workers, so the page stays fully responsive. A progress bar shows reading and
+                  conversion status, and very large outputs are delivered as a direct download.
                 </dd>
               </div>
             </dl>
