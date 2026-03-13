@@ -1,5 +1,8 @@
-import Link from "next/link";
 import Converter from "@/components/Converter";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import RelatedTools from "@/components/RelatedTools";
+import FaqSection, { type FaqItem } from "@/components/FaqSection";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -17,6 +20,35 @@ const jsonLd = {
   },
 };
 
+const faqItems: FaqItem[] = [
+  {
+    question: "Is this JSON to XML converter free?",
+    answer:
+      "Yes — completely free, forever. There's no sign-up, no account, and no usage limits. If you find it useful, a coffee is appreciated but never required.",
+  },
+  {
+    question: "Is my data safe?",
+    answer:
+      "All conversion happens locally in your browser using JavaScript. Your JSON or XML is never uploaded to any server. It's safe to use with sensitive or proprietary data.",
+  },
+  {
+    question: "What file types are supported?",
+    answer: (
+      <>
+        You can upload or drag and drop <code className="text-slate-300">.json</code>,{" "}
+        <code className="text-slate-300">.xml</code>, and <code className="text-slate-300">.txt</code> files.
+        Output can be downloaded as <code className="text-slate-300">.json</code> or{" "}
+        <code className="text-slate-300">.xml</code>.
+      </>
+    ),
+  },
+  {
+    question: "Can it handle large files?",
+    answer:
+      "Yes — the tool handles files up to 500 MB. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
+  },
+];
+
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
@@ -24,31 +56,8 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-bold tracking-tight">
-              <span className="text-brand-500">JSON</span>
-              <span className="text-slate-500 mx-1">⇄</span>
-              <span className="text-slate-100">XML</span>
-            </span>
-            <span className="hidden sm:inline text-xs text-slate-500 border border-slate-700 rounded px-2 py-0.5">
-              Free forever
-            </span>
-          </div>
 
-          <a
-            href="https://buymeacoffee.com/mathamagician"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <span>☕</span>
-            <span className="hidden sm:inline">Buy me a coffee</span>
-          </a>
-        </div>
-      </header>
+      <Header currentSlug="/" />
 
       {/* Hero */}
       <section className="bg-slate-900 border-b border-slate-800">
@@ -124,65 +133,13 @@ export default function Home() {
             </p>
           </div>
 
-          <div>
-            <h2 className="text-slate-200 text-lg font-semibold mb-3">
-              Frequently Asked Questions
-            </h2>
-            <dl className="space-y-5">
-              <div>
-                <dt className="text-slate-300 font-medium mb-1">Is this JSON to XML converter free?</dt>
-                <dd>
-                  Yes — completely free, forever. There&apos;s no sign-up, no account, and no usage limits.
-                  If you find it useful, a coffee is appreciated but never required.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-300 font-medium mb-1">Is my data safe?</dt>
-                <dd>
-                  All conversion happens locally in your browser using JavaScript. Your JSON or XML is never
-                  uploaded to any server. It&apos;s safe to use with sensitive or proprietary data.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-300 font-medium mb-1">What file types are supported?</dt>
-                <dd>
-                  You can upload or drag and drop <code className="text-slate-300">.json</code>,{" "}
-                  <code className="text-slate-300">.xml</code>, and <code className="text-slate-300">.txt</code> files.
-                  Output can be downloaded as <code className="text-slate-300">.json</code> or{" "}
-                  <code className="text-slate-300">.xml</code>.
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-300 font-medium mb-1">Can it handle large files?</dt>
-                <dd>
-                  Yes — the tool handles files up to 500 MB. Large files are processed off the main thread
-                  using Web Workers, so the page stays fully responsive. A progress bar shows reading and
-                  conversion status, and very large outputs are delivered as a direct download.
-                </dd>
-              </div>
-            </dl>
-          </div>
+          <FaqSection items={faqItems} />
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800 text-center py-4 text-xs text-slate-600">
-        <p>
-          json2xml.com — built with ☕ |{" "}
-          <a
-            href="https://buymeacoffee.com/mathamagician"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-slate-400 underline"
-          >
-            Support this tool
-          </a>
-          {" "}|{" "}
-          <Link href="/privacy" className="hover:text-slate-400 underline">
-            Privacy Policy
-          </Link>
-        </p>
-      </footer>
+      <RelatedTools currentSlug="/" />
+
+      <Footer />
     </div>
   );
 }

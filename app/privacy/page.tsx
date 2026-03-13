@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — JSON2XML",
@@ -9,22 +10,7 @@ export const metadata: Metadata = {
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight">
-            <span className="text-brand-500">JSON</span>
-            <span className="text-slate-500 mx-1">⇄</span>
-            <span className="text-slate-100">XML</span>
-          </Link>
-          <Link
-            href="/"
-            className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            ← Back to converter
-          </Link>
-        </div>
-      </header>
+      <Header />
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-12 text-sm text-slate-400 space-y-8">
         <div>
@@ -131,9 +117,7 @@ export default function PrivacyPolicy() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-800 text-center py-4 text-xs text-slate-600">
-        <p>json2xml.com — <Link href="/" className="hover:text-slate-400 underline">Back to converter</Link></p>
-      </footer>
+      <Footer />
     </div>
   );
 }

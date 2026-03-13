@@ -23,10 +23,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function Converter() {
+export default function Converter({ initialDirection = "json-to-xml" as Direction }) {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
-  const [direction, setDirection] = useState<Direction>("json-to-xml");
+  const [direction, setDirection] = useState<Direction>(initialDirection);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
