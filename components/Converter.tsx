@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { jsonToXml, xmlToJson, detectFormat, outputFilename, type Format } from "@/lib/converter";
+import InputStats from "@/components/InputStats";
 
 type Direction = "json-to-xml" | "xml-to-json";
 
@@ -12,6 +13,18 @@ const TEXTAREA_MAX = 10 * 1024 * 1024;     // 10 MB — don't render output in t
 const SIZE_WARN_BYTES = 50 * 1024 * 1024;  // 50 MB — show advisory banner
 
 type Progress = { phase: "reading" | "converting"; percent: number };
+
+const SAMPLE_JSON = `{
+  "store": {
+    "name": "Book Haven",
+    "location": { "city": "Portland", "state": "OR" },
+    "books": [
+      { "title": "The Great Gatsby", "author": "F. Scott Fitzgerald", "year": 1925, "price": 12.99 },
+      { "title": "To Kill a Mockingbird", "author": "Harper Lee", "year": 1960, "price": 14.99 }
+    ],
+    "open": true
+  }
+}`;
 
 function formatLabel(f: Format) {
   return f.toUpperCase();
@@ -245,6 +258,15 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setDirection("json-to-xml");
+    setInput(SAMPLE_JSON);
+    currentFileRef.current = null;
+    setFileSize(null);
+    setFileName(null);
+    convertSync(SAMPLE_JSON, "json-to-xml");
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -307,6 +329,10 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
         >
           ⇄ Flip
         </button>
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
 
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
@@ -385,6 +411,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         {/* Output panel */}

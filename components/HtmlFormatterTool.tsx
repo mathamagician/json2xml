@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import InputStats from "@/components/InputStats";
 
 function formatHtml(input: string, indent: number = 2): string {
   const tab = " ".repeat(indent);
@@ -77,6 +78,8 @@ function minifyHtml(input: string): string {
     .trim();
 }
 
+const SAMPLE_HTML = `<!DOCTYPE html><html><head><title>Hello</title></head><body><div class="container"><h1>Hello World</h1><p>This is a <strong>sample</strong> HTML document.</p><ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></div></body></html>`;
+
 export default function HtmlFormatterTool() {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -148,6 +151,11 @@ export default function HtmlFormatterTool() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_HTML);
+    doFormat(SAMPLE_HTML, mode, indent);
+  };
+
   const handleClear = () => { setInput(""); setOutput(""); setError(null); setFileName(null); };
 
   return (
@@ -166,6 +174,9 @@ export default function HtmlFormatterTool() {
             <option value={4}>4 spaces</option>
             <option value={1}>1 tab</option>
           </select>
+        )}
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
         )}
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
@@ -190,6 +201,7 @@ export default function HtmlFormatterTool() {
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         <div className="flex flex-col gap-2">

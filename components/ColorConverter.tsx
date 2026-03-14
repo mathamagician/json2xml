@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_HEX = "#0284c7";
+
 function hexToRgb(hex: string): [number, number, number] | null {
   const match = hex.replace("#", "").match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if (!match) return null;
@@ -46,10 +48,10 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 }
 
 export default function ColorConverter() {
-  const [hex, setHex] = useState("#0284c7");
-  const [rgb, setRgb] = useState("2, 132, 199");
-  const [hsl, setHsl] = useState("201, 98%, 39%");
-  const [previewColor, setPreviewColor] = useState("#0284c7");
+  const [hex, setHex] = useState("");
+  const [rgb, setRgb] = useState("");
+  const [hsl, setHsl] = useState("");
+  const [previewColor, setPreviewColor] = useState("#1e293b");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const updateFromHex = (value: string) => {
@@ -91,6 +93,15 @@ export default function ColorConverter() {
     }
   };
 
+  const handleSample = () => { updateFromHex(SAMPLE_HEX); };
+
+  const handleClear = () => {
+    setHex("");
+    setRgb("");
+    setHsl("");
+    setPreviewColor("#1e293b");
+  };
+
   const handleCopy = async (field: string, value: string) => {
     await navigator.clipboard.writeText(value);
     setCopiedField(field);
@@ -99,6 +110,19 @@ export default function ColorConverter() {
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-2xl mx-auto">
+      {/* Controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
+          Color Converter
+        </div>
+        {!hex && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
+        {hex && (
+          <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
+        )}
+      </div>
+
       {/* Color preview */}
       <div
         className="w-full h-32 rounded-lg border border-slate-700 transition-colors"

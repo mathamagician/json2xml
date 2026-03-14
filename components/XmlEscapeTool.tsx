@@ -30,6 +30,11 @@ function xmlUnescape(str: string): string {
   return result;
 }
 
+const SAMPLE_TEXT = `The formula is: x < 10 && y > 5
+Price: $29.99 (use "code" for 10% off)
+Company: AT&T's "New" <Premium> Plan
+HTML example: <div class="test">Hello & welcome</div>`;
+
 export default function XmlEscapeTool() {
   const [text, setText] = useState("");
   const [escaped, setEscaped] = useState("");
@@ -55,12 +60,17 @@ export default function XmlEscapeTool() {
 
   const handleClear = () => { setText(""); setEscaped(""); };
 
+  const handleSample = () => { handleTextChange(SAMPLE_TEXT); };
+
   return (
     <div className="flex flex-col gap-4 w-full">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           Text ↔ XML Escaped
         </div>
+        {!text && !escaped && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(text || escaped) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
         )}

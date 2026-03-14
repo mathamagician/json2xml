@@ -2,6 +2,14 @@
 
 import { useState, useMemo } from "react";
 
+const SAMPLE_PATTERN = "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b";
+const SAMPLE_TEST = `Contact us at:
+- support@example.com for general inquiries
+- sales@company.org for pricing
+- john.doe@email.co.uk for partnerships
+- invalid@email (not a valid email)
+- another.valid@test.io works too`;
+
 type MatchResult = {
   match: string;
   index: number;
@@ -77,6 +85,12 @@ export default function RegexTester() {
     setError(null);
   };
 
+  const handleSample = () => {
+    setPattern(SAMPLE_PATTERN);
+    setTestString(SAMPLE_TEST);
+    setFlags("gi");
+  };
+
   const flagOptions = [
     { flag: "g", label: "Global", desc: "Find all matches" },
     { flag: "i", label: "Case Insensitive", desc: "Ignore case" },
@@ -96,6 +110,9 @@ export default function RegexTester() {
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           Regex Tester
         </div>
+        {!pattern && !testString && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(pattern || testString) && (
           <button
             onClick={handleClear}

@@ -3,6 +3,22 @@
 import { useState, useCallback } from "react";
 import { computeDiff, type DiffLine } from "@/lib/diff";
 
+const SAMPLE_LEFT = `function greet(name) {
+  console.log("Hello, " + name);
+  return true;
+}
+
+const users = ["Alice", "Bob", "Carol"];
+users.forEach(greet);`;
+
+const SAMPLE_RIGHT = `function greet(name, greeting = "Hello") {
+  console.log(greeting + ", " + name + "!");
+  return true;
+}
+
+const users = ["Alice", "Bob", "Carol", "Dave"];
+users.forEach(user => greet(user));`;
+
 export default function DiffTool() {
   const [textA, setTextA] = useState("");
   const [textB, setTextB] = useState("");
@@ -13,6 +29,13 @@ export default function DiffTool() {
     setDiff(computeDiff(textA, textB));
     setHasCompared(true);
   }, [textA, textB]);
+
+  const handleSample = () => {
+    setTextA(SAMPLE_LEFT);
+    setTextB(SAMPLE_RIGHT);
+    setDiff(computeDiff(SAMPLE_LEFT, SAMPLE_RIGHT));
+    setHasCompared(true);
+  };
 
   const handleClear = () => {
     setTextA("");
@@ -36,6 +59,11 @@ export default function DiffTool() {
             <span className="text-green-400">+{additions} added</span>
             <span className="text-red-400">-{removals} removed</span>
           </div>
+        )}
+        {!textA && !textB && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+            Sample
+          </button>
         )}
         {(textA || textB) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">

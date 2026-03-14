@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsaWNlIEpvaG5zb24iLCJlbWFpbCI6ImFsaWNlQGV4YW1wbGUuY29tIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzE2MjM5MDIyLCJleHAiOjE3MTYyNDI2MjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+
 type DecodedJwt = {
   header: Record<string, unknown>;
   payload: Record<string, unknown>;
@@ -57,6 +59,8 @@ export default function JwtDecoder() {
 
   const handleClear = () => { setToken(""); setDecoded(null); setError(null); };
 
+  const handleSample = () => { handleChange(SAMPLE_JWT); };
+
   const isExpired = decoded?.payload?.exp ? (decoded.payload.exp as number) * 1000 < Date.now() : null;
 
   return (
@@ -65,6 +69,9 @@ export default function JwtDecoder() {
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           JWT Decoder
         </div>
+        {!token && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {token && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
         )}

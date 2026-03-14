@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_TEXT = "https://example.com/search?q=hello world&lang=en&sort=relevance&filter=price<100";
+
 export default function UrlEncodeTool() {
   const [text, setText] = useState("");
   const [encoded, setEncoded] = useState("");
@@ -42,6 +44,8 @@ export default function UrlEncodeTool() {
 
   const handleClear = () => { setText(""); setEncoded(""); setError(null); };
 
+  const handleSample = () => { handleTextChange(SAMPLE_TEXT); };
+
   return (
     <div className="flex flex-col gap-4 w-full">
       <div className="flex items-center gap-3 flex-wrap">
@@ -52,6 +56,9 @@ export default function UrlEncodeTool() {
           <input type="checkbox" checked={fullUrl} onChange={(e) => handleModeChange(e.target.checked)} className="accent-brand-500" />
           Full URL mode
         </label>
+        {!text && !encoded && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(text || encoded) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
         )}

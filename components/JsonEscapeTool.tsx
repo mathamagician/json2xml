@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_TEXT = 'Line 1: Hello "World"\nLine 2: Path is C:\\Users\\Alice\nLine 3: Tab\there\nLine 4: Unicode → café ☕';
+
 function jsonEscape(str: string): string {
   return JSON.stringify(str).slice(1, -1);
 }
@@ -38,12 +40,17 @@ export default function JsonEscapeTool() {
 
   const handleClear = () => { setText(""); setEscaped(""); setError(null); };
 
+  const handleSample = () => { handleTextChange(SAMPLE_TEXT); };
+
   return (
     <div className="flex flex-col gap-4 w-full">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           Text ↔ JSON Escaped
         </div>
+        {!text && !escaped && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(text || escaped) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
         )}

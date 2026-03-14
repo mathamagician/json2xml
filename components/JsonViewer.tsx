@@ -138,6 +138,29 @@ function TreeNode({ label, value, path, depth, defaultExpanded, onCopyPath }: Tr
   );
 }
 
+const SAMPLE_JSON = `{
+  "company": "Acme Corp",
+  "employees": [
+    {
+      "name": "Alice",
+      "role": "Engineer",
+      "skills": ["TypeScript", "React", "Node.js"]
+    },
+    {
+      "name": "Bob",
+      "role": "Designer",
+      "skills": ["Figma", "CSS", "Illustration"]
+    }
+  ],
+  "address": {
+    "street": "123 Main St",
+    "city": "Portland",
+    "state": "OR"
+  },
+  "founded": 2020,
+  "public": false
+}`;
+
 // ─── JSON Viewer Component ──────────────────────────────────────────────────────
 
 export default function JsonViewer() {
@@ -206,6 +229,11 @@ export default function JsonViewer() {
     setTreeKey((k) => k + 1);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_JSON);
+    parse(SAMPLE_JSON);
+  };
+
   const handleClear = () => {
     setInput("");
     setParsed(undefined);
@@ -228,6 +256,12 @@ export default function JsonViewer() {
             className="btn-ghost text-xs"
           >
             Reset tree
+          </button>
+        )}
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+            Sample
           </button>
         )}
 

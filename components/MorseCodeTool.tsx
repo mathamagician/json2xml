@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { textToMorse, morseToText } from "@/lib/morse";
 
+const SAMPLE_TEXT = "HELLO WORLD";
+
 export default function MorseCodeTool() {
   const [text, setText] = useState("");
   const [morse, setMorse] = useState("");
@@ -37,6 +39,8 @@ export default function MorseCodeTool() {
     setMorse("");
   };
 
+  const handleSample = () => { handleTextChange(SAMPLE_TEXT); };
+
   return (
     <div className="flex flex-col gap-4 w-full">
       {/* Controls */}
@@ -44,6 +48,9 @@ export default function MorseCodeTool() {
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           Text ↔ Morse
         </div>
+        {!text && !morse && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(text || morse) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
             Clear

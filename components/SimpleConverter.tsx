@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { jsonToYaml, yamlToJson, xmlToYaml, yamlToXml } from "@/lib/yaml";
 import { jsonToCsv, csvToJson, csvToXml, xmlToCsv } from "@/lib/csv";
 import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown";
+import InputStats from "@/components/InputStats";
 
 export type ConversionType =
   | "json-to-yaml"
@@ -36,6 +37,19 @@ const conversions: Record<ConversionType, ConversionConfig> = {
   "xml-to-csv": { fn: xmlToCsv, inputLabel: "XML", outputLabel: "CSV", inputAccept: ".xml,.txt", outputExtension: "csv" },
   "markdown-to-html": { fn: markdownToHtml, inputLabel: "Markdown", outputLabel: "HTML", inputAccept: ".md,.markdown,.txt", outputExtension: "html" },
   "html-to-markdown": { fn: htmlToMarkdown, inputLabel: "HTML", outputLabel: "Markdown", inputAccept: ".html,.htm,.txt", outputExtension: "md" },
+};
+
+const sampleData: Record<ConversionType, string> = {
+  "json-to-yaml": '{\n  "name": "Alice",\n  "age": 30,\n  "hobbies": ["reading", "hiking"],\n  "address": {\n    "city": "Portland",\n    "state": "OR"\n  }\n}',
+  "yaml-to-json": 'name: Alice\nage: 30\nhobbies:\n  - reading\n  - hiking\naddress:\n  city: Portland\n  state: OR',
+  "xml-to-yaml": '<person>\n  <name>Alice</name>\n  <age>30</age>\n  <city>Portland</city>\n</person>',
+  "yaml-to-xml": 'person:\n  name: Alice\n  age: 30\n  city: Portland',
+  "json-to-csv": '[{"name":"Alice","age":30,"city":"Portland"},{"name":"Bob","age":25,"city":"Seattle"},{"name":"Carol","age":35,"city":"Denver"}]',
+  "csv-to-json": 'name,age,city\nAlice,30,Portland\nBob,25,Seattle\nCarol,35,Denver',
+  "csv-to-xml": 'name,age,city\nAlice,30,Portland\nBob,25,Seattle',
+  "xml-to-csv": '<people>\n  <person><name>Alice</name><age>30</age><city>Portland</city></person>\n  <person><name>Bob</name><age>25</age><city>Seattle</city></person>\n</people>',
+  "markdown-to-html": '# Hello World\n\nThis is a **bold** and *italic* paragraph.\n\n## Features\n\n- Item one\n- Item two\n- Item three\n\n```javascript\nconsole.log("Hello!");\n```',
+  "html-to-markdown": '<h1>Hello World</h1>\n<p>This is a <strong>bold</strong> and <em>italic</em> paragraph.</p>\n<h2>Features</h2>\n<ul>\n<li>Item one</li>\n<li>Item two</li>\n</ul>',
 };
 
 function formatSize(bytes: number): string {
@@ -123,6 +137,10 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    handleInputChange(sampleData[conversion]);
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -140,6 +158,10 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           {inputLabel} → {outputLabel}
         </div>
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
 
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
@@ -204,6 +226,7 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         {/* Output panel */}

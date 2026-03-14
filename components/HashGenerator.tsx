@@ -30,6 +30,8 @@ async function computeHashes(text: string): Promise<HashResult> {
   };
 }
 
+const SAMPLE_TEXT = "Hello, World! This is a sample text for generating hash values.";
+
 export default function HashGenerator() {
   const [input, setInput] = useState("");
   const [hashes, setHashes] = useState<HashResult | null>(null);
@@ -44,6 +46,11 @@ export default function HashGenerator() {
     const result = await computeHashes(text);
     setHashes(result);
   }, []);
+
+  const handleSample = () => {
+    setInput(SAMPLE_TEXT);
+    generate(SAMPLE_TEXT);
+  };
 
   const handleChange = (text: string) => {
     setInput(text);
@@ -62,6 +69,12 @@ export default function HashGenerator() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="panel-label">Input Text</span>
+          <div className="flex items-center gap-3">
+            {!input && (
+              <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+                Sample
+              </button>
+            )}
           <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
             <input
               type="checkbox"
@@ -71,6 +84,7 @@ export default function HashGenerator() {
             />
             Uppercase
           </label>
+          </div>
         </div>
         <textarea
           className="editor-textarea !min-h-[150px]"

@@ -2,6 +2,22 @@
 
 import { useState, useCallback, useRef } from "react";
 import { generateCode, type CodeLanguage } from "@/lib/codegen";
+import InputStats from "@/components/InputStats";
+
+const SAMPLE_JSON = `{
+  "id": 1,
+  "name": "Alice Johnson",
+  "email": "alice@example.com",
+  "age": 30,
+  "isActive": true,
+  "address": {
+    "street": "123 Main St",
+    "city": "Portland",
+    "state": "OR",
+    "zip": "97201"
+  },
+  "tags": ["admin", "user"]
+}`;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -101,6 +117,11 @@ export default function CodeGeneratorTool({ language }: { language: CodeLanguage
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_JSON);
+    generate(SAMPLE_JSON, rootName);
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -129,6 +150,10 @@ export default function CodeGeneratorTool({ language }: { language: CodeLanguage
             placeholder="Root"
           />
         </div>
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
 
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
@@ -193,6 +218,7 @@ export default function CodeGeneratorTool({ language }: { language: CodeLanguage
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         {/* Output panel */}

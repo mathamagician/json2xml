@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_TEXT = "Hello, World! Base64 encoding is commonly used for embedding data in URLs, emails, and APIs. 🚀";
+
 function utf8ToBase64(str: string): string {
   const bytes = new TextEncoder().encode(str);
   const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
@@ -43,12 +45,17 @@ export default function Base64Tool() {
 
   const handleClear = () => { setText(""); setBase64(""); setError(null); };
 
+  const handleSample = () => { handleTextChange(SAMPLE_TEXT); };
+
   return (
     <div className="flex flex-col gap-4 w-full">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           Text ↔ Base64
         </div>
+        {!text && !base64 && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
         {(text || base64) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
         )}

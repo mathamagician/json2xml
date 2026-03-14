@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { cronToHuman, getNextRuns } from "@/lib/cron";
 
+const SAMPLE_CRON = "*/15 * * * *";
+
 const EXAMPLES = [
   { label: "Every minute", value: "* * * * *" },
   { label: "Every hour", value: "0 * * * *" },
@@ -19,6 +21,10 @@ export default function CronParser() {
   const [nextRuns, setNextRuns] = useState<Date[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const handleSample = () => {
+    parse(SAMPLE_CRON);
+  };
 
   const parse = (expr: string) => {
     setExpression(expr);
@@ -60,6 +66,9 @@ export default function CronParser() {
             placeholder="* * * * *"
             className="flex-1 min-w-[200px] bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-lg text-slate-100 font-mono outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 placeholder:text-slate-600"
           />
+          {!expression && (
+            <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+          )}
           {expression && (
             <button
               onClick={() => parse("")}

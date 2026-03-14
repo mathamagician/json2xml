@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useRef } from "react";
 import { formatSql, dialectLabels, type SqlDialect } from "@/lib/sql";
+import InputStats from "@/components/InputStats";
+
+const SAMPLE_SQL = `SELECT u.id, u.name, u.email, o.total FROM users u INNER JOIN orders o ON u.id = o.user_id WHERE u.created_at > '2024-01-01' AND o.status = 'completed' GROUP BY u.id, u.name, u.email, o.total HAVING o.total > 100 ORDER BY o.total DESC LIMIT 50;`;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -103,6 +106,11 @@ export default function SqlFormatterTool() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_SQL);
+    doFormat(SAMPLE_SQL, dialect, indent, uppercase);
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -158,6 +166,10 @@ export default function SqlFormatterTool() {
           UPPERCASE
         </button>
 
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
+
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
             Clear
@@ -211,6 +223,7 @@ export default function SqlFormatterTool() {
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         <div className="flex flex-col gap-2">

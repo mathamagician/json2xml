@@ -107,6 +107,29 @@ function TreeNode({ label, value, depth, defaultExpanded }: TreeNodeProps) {
   );
 }
 
+const SAMPLE_JSON = `{
+  "company": "Acme Corp",
+  "employees": [
+    {
+      "name": "Alice",
+      "role": "Engineer",
+      "skills": ["TypeScript", "React", "Node.js"]
+    },
+    {
+      "name": "Bob",
+      "role": "Designer",
+      "skills": ["Figma", "CSS", "Illustration"]
+    }
+  ],
+  "address": {
+    "street": "123 Main St",
+    "city": "Portland",
+    "state": "OR"
+  },
+  "founded": 2020,
+  "public": false
+}`;
+
 // ─── JSON Editor Component ──────────────────────────────────────────────────────
 
 type IndentOption = "2" | "4" | "tab";
@@ -200,6 +223,11 @@ export default function JsonEditor() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_JSON);
+    parse(SAMPLE_JSON);
+  };
+
   const handleClear = () => {
     setInput("");
     setParsed(undefined);
@@ -254,6 +282,12 @@ export default function JsonEditor() {
               Download
             </button>
           </>
+        )}
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+            Sample
+          </button>
         )}
 
         {(input || fileName) && (

@@ -3,6 +3,21 @@
 import { useState, useRef } from "react";
 import { generateJsonSchema } from "@/lib/jsonschema";
 
+const SAMPLE_JSON = `{
+  "id": 1,
+  "name": "Alice Johnson",
+  "email": "alice@example.com",
+  "isActive": true,
+  "createdAt": "2024-01-15T10:30:00Z",
+  "address": {
+    "street": "123 Main St",
+    "city": "Portland",
+    "zip": "97201"
+  },
+  "tags": ["admin", "user"],
+  "score": 95.5
+}`;
+
 export default function JsonSchemaGenerator() {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -61,6 +76,11 @@ export default function JsonSchemaGenerator() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_JSON);
+    generate(SAMPLE_JSON);
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -74,6 +94,14 @@ export default function JsonSchemaGenerator() {
         <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
           JSON &rarr; JSON Schema
         </div>
+        {!input && !fileName && (
+          <button
+            onClick={handleSample}
+            className="btn-ghost text-brand-400 hover:text-brand-300"
+          >
+            Sample
+          </button>
+        )}
         {(input || fileName) && (
           <button
             onClick={handleClear}

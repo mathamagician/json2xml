@@ -3,6 +3,18 @@
 import { useState, useCallback } from "react";
 import { queryJsonPath } from "@/lib/jsonpath";
 
+const SAMPLE_JSON = `{
+  "store": {
+    "books": [
+      { "title": "The Great Gatsby", "author": "Fitzgerald", "price": 12.99 },
+      { "title": "1984", "author": "Orwell", "price": 9.99 },
+      { "title": "Brave New World", "author": "Huxley", "price": 11.99 }
+    ],
+    "name": "Book Haven"
+  }
+}`;
+const SAMPLE_PATH = "$.store.books[*].title";
+
 export default function JsonPathTester() {
   const [json, setJson] = useState("");
   const [path, setPath] = useState("$");
@@ -41,6 +53,12 @@ export default function JsonPathTester() {
     evaluate(json, text);
   };
 
+  const handleSample = () => {
+    setJson(SAMPLE_JSON);
+    setPath(SAMPLE_PATH);
+    evaluate(SAMPLE_JSON, SAMPLE_PATH);
+  };
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(results);
     setCopied(true);
@@ -49,6 +67,15 @@ export default function JsonPathTester() {
 
   return (
     <div className="flex flex-col gap-4 w-full">
+      {/* Controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {!json && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+            Sample
+          </button>
+        )}
+      </div>
+
       {/* Path input */}
       <div className="flex flex-col gap-2">
         <span className="panel-label">JSONPath Expression</span>

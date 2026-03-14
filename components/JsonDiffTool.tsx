@@ -20,6 +20,27 @@ function normalizeJson(text: string): string {
   return JSON.stringify(sortKeys(parsed), null, 2);
 }
 
+const SAMPLE_LEFT = `{
+  "name": "Alice",
+  "age": 30,
+  "email": "alice@example.com",
+  "address": {
+    "city": "Portland",
+    "state": "OR"
+  }
+}`;
+
+const SAMPLE_RIGHT = `{
+  "name": "Alice",
+  "age": 31,
+  "email": "alice@newdomain.com",
+  "address": {
+    "city": "Seattle",
+    "state": "WA"
+  },
+  "phone": "555-0123"
+}`;
+
 export default function JsonDiffTool() {
   const [leftInput, setLeftInput] = useState("");
   const [rightInput, setRightInput] = useState("");
@@ -51,6 +72,19 @@ export default function JsonDiffTool() {
     setRightInput(value);
   };
 
+  const handleSample = () => {
+    setLeftInput(SAMPLE_LEFT);
+    setRightInput(SAMPLE_RIGHT);
+    setError(null);
+    try {
+      const leftNorm = normalizeJson(SAMPLE_LEFT);
+      const rightNorm = normalizeJson(SAMPLE_RIGHT);
+      setDiff(computeDiff(leftNorm, rightNorm));
+    } catch {
+      setDiff([]);
+    }
+  };
+
   const handleClear = () => {
     setLeftInput("");
     setRightInput("");
@@ -73,6 +107,14 @@ export default function JsonDiffTool() {
         >
           Compare
         </button>
+        {!leftInput && !rightInput && (
+          <button
+            onClick={handleSample}
+            className="btn-ghost text-brand-400 hover:text-brand-300"
+          >
+            Sample
+          </button>
+        )}
         {(leftInput || rightInput) && (
           <button
             onClick={handleClear}

@@ -2,8 +2,15 @@
 
 import { useState, useCallback, useRef } from "react";
 import { validateJson, validateXml, validateYaml, type ValidationResult } from "@/lib/validator";
+import InputStats from "@/components/InputStats";
 
 type Format = "json" | "xml" | "yaml";
+
+const sampleByFormat: Record<Format, string> = {
+  json: '{\n  "name": "Alice",\n  "age": 30,\n  "email": "alice@example.com",\n  "hobbies": ["reading", "hiking"]\n}',
+  xml: '<?xml version="1.0" encoding="UTF-8"?>\n<person>\n  <name>Alice</name>\n  <age>30</age>\n  <email>alice@example.com</email>\n</person>',
+  yaml: 'name: Alice\nage: 30\nemail: alice@example.com\nhobbies:\n  - reading\n  - hiking',
+};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -61,6 +68,12 @@ export default function ValidatorTool({ format }: { format: Format }) {
     []
   );
 
+  const handleSample = () => {
+    const sample = sampleByFormat[format];
+    setInput(sample);
+    doValidate(sample);
+  };
+
   const handleClear = () => {
     setInput("");
     setResult(null);
@@ -84,6 +97,10 @@ export default function ValidatorTool({ format }: { format: Format }) {
             <span className="text-lg">{result.valid ? "✓" : "✗"}</span>
             <span>{result.valid ? `Valid ${label}` : `Invalid ${label}`}</span>
           </div>
+        )}
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
         )}
 
         {(input || fileName) && (
@@ -149,6 +166,7 @@ export default function ValidatorTool({ format }: { format: Format }) {
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         {/* Result panel */}

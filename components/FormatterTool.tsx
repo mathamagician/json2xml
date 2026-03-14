@@ -2,9 +2,16 @@
 
 import { useState, useCallback, useRef } from "react";
 import { formatJson, minifyJson, formatXml, minifyXml, formatYaml, minifyYaml } from "@/lib/formatter";
+import InputStats from "@/components/InputStats";
 
 type Format = "json" | "xml" | "yaml";
 type IndentOption = "2" | "4" | "tab";
+
+const sampleByFormat: Record<Format, string> = {
+  json: '{"name":"Alice","age":30,"address":{"city":"Portland","state":"OR"},"hobbies":["reading","hiking"]}',
+  xml: '<person><name>Alice</name><age>30</age><address><city>Portland</city><state>OR</state></address></person>',
+  yaml: 'name: Alice\nage: 30\naddress:\n  city: Portland\n  state: OR\nhobbies:\n- reading\n- hiking',
+};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -126,6 +133,12 @@ export default function FormatterTool({
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    const sample = sampleByFormat[format];
+    setInput(sample);
+    doFormat(sample, minify, indent);
+  };
+
   const handleClear = () => {
     setInput("");
     setOutput("");
@@ -167,6 +180,10 @@ export default function FormatterTool({
         >
           Minify
         </button>
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
 
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
@@ -231,6 +248,7 @@ export default function FormatterTool({
               </div>
             )}
           </div>
+          <InputStats text={input} />
         </div>
 
         {/* Output panel */}

@@ -43,6 +43,26 @@ function evaluateXPath(xmlText: string, xpathExpr: string): string[] {
   return nodes;
 }
 
+const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<bookstore>
+  <book category="fiction">
+    <title>The Great Gatsby</title>
+    <author>Fitzgerald</author>
+    <price>12.99</price>
+  </book>
+  <book category="fiction">
+    <title>1984</title>
+    <author>Orwell</author>
+    <price>9.99</price>
+  </book>
+  <book category="science">
+    <title>A Brief History of Time</title>
+    <author>Hawking</author>
+    <price>15.99</price>
+  </book>
+</bookstore>`;
+const SAMPLE_XPATH = "//book[@category='fiction']/title";
+
 export default function XPathTester() {
   const [xml, setXml] = useState("");
   const [xpath, setXpath] = useState("/");
@@ -75,6 +95,12 @@ export default function XPathTester() {
     evaluate(xml, text);
   };
 
+  const handleSample = () => {
+    setXml(SAMPLE_XML);
+    setXpath(SAMPLE_XPATH);
+    evaluate(SAMPLE_XML, SAMPLE_XPATH);
+  };
+
   const handleCopy = async () => {
     await navigator.clipboard.writeText(results.join("\n"));
     setCopied(true);
@@ -83,6 +109,15 @@ export default function XPathTester() {
 
   return (
     <div className="flex flex-col gap-4 w-full">
+      {/* Controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {!xml && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">
+            Sample
+          </button>
+        )}
+      </div>
+
       {/* XPath input */}
       <div className="flex flex-col gap-2">
         <span className="panel-label">XPath Expression</span>

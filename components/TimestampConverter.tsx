@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const SAMPLE_TIMESTAMP = "1000000000";
+
 export default function TimestampConverter() {
   const [timestamp, setTimestamp] = useState("");
   const [dateStr, setDateStr] = useState("");
@@ -76,6 +78,12 @@ export default function TimestampConverter() {
         <button onClick={setNow} className="btn-ghost">
           Now
         </button>
+        {!timestamp && !dateStr && (
+          <button onClick={() => updateFromTimestamp(SAMPLE_TIMESTAMP, isMillis)} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
+        )}
+        {(timestamp || dateStr) && (
+          <button onClick={() => { setTimestamp(""); setDateStr(""); setError(null); }} className="btn-ghost text-red-400 hover:text-red-300">Clear</button>
+        )}
       </div>
 
       {/* Timestamp input */}

@@ -84,6 +84,13 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+const SAMPLE_JSON = `[
+  { "name": "Alice", "role": "Engineer", "department": "Engineering", "salary": 95000 },
+  { "name": "Bob", "role": "Designer", "department": "Design", "salary": 85000 },
+  { "name": "Carol", "role": "Manager", "department": "Engineering", "salary": 110000 },
+  { "name": "Dave", "role": "Analyst", "department": "Data", "salary": 78000 }
+]`;
+
 export default function JsonToHtmlTable() {
   const [input, setInput] = useState("");
   const [html, setHtml] = useState("");
@@ -158,6 +165,11 @@ export default function JsonToHtmlTable() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSample = () => {
+    setInput(SAMPLE_JSON);
+    convert(SAMPLE_JSON);
+  };
+
   const handleClear = () => {
     setInput("");
     setHtml("");
@@ -193,6 +205,10 @@ export default function JsonToHtmlTable() {
               Raw HTML
             </button>
           </div>
+        )}
+
+        {!input && !fileName && (
+          <button onClick={handleSample} className="btn-ghost text-brand-400 hover:text-brand-300">Sample</button>
         )}
 
         {(input || fileName) && (
