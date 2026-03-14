@@ -1,10 +1,33 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { formatJson, minifyJson, formatXml, minifyXml } from "@/lib/formatter";
+import { useState, useCallback, useRef, useMemo } from "react";
+import { jsonToYaml, yamlToJson, xmlToYaml, yamlToXml } from "@/lib/yaml";
+import { jsonToCsv, csvToJson } from "@/lib/csv";
 
-type Format = "json" | "xml";
-type IndentOption = "2" | "4" | "tab";
+export type ConversionType =
+  | "json-to-yaml"
+  | "yaml-to-json"
+  | "xml-to-yaml"
+  | "yaml-to-xml"
+  | "json-to-csv"
+  | "csv-to-json";
+
+type ConversionConfig = {
+  fn: (input: string) => string;
+  inputLabel: string;
+  outputLabel: string;
+  inputAccept: string;
+  outputExtension: string;
+};
+
+const conversions: Record<ConversionType, ConversionConfig> = {
+  "json-to-yaml": { fn: jsonToYaml, inputLabel: "JSON", outputLabel: "YAML", inputAccept: ".json,.txt", outputExtension: "yaml" },
+  "yaml-to-json": { fn: yamlToJson, inputLabel: "YAML", outputLabel: "JSON", inputAccept: ".yaml,.yml,.txt", outputExtension: "json" },
+  "xml-to-yaml": { fn: xmlToYaml, inputLabel: "XML", outputLabel: "YAML", inputAccept: ".xml,.txt", outputExtension: "yaml" },
+  "yaml-to-xml": { fn: yamlToXml, inputLabel: "YAML", outputLabel: "XML", inputAccept: ".yaml,.yml,.txt", outputExtension: "xml" },
+  "json-to-csv": { fn: jsonToCsv, inputLabel: "JSON", outputLabel: "CSV", inputAccept: ".json,.txt", outputExtension: "csv" },
+  "csv-to-json": { fn: csvToJson, inputLabel: "CSV", outputLabel: "JSON", inputAccept: ".csv,.tsv,.txt", outputExtension: "json" },
+};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -12,73 +35,41 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getIndent(option: IndentOption): number | string {
-  if (option === "tab") return "\t";
-  return parseInt(option);
-}
+export default function SimpleConverter({ conversion }: { conversion: ConversionType }) {
+  const config = useMemo(() => conversions[conversion], [conversion]);
+  const { fn: convertFn, inputLabel, outputLabel, inputAccept, outputExtension } = config;
 
-export default function FormatterTool({
-  format,
-  defaultMinify = false,
-}: {
-  format: Format;
-  defaultMinify?: boolean;
-}) {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [indent, setIndent] = useState<IndentOption>("2");
-  const [minify, setMinify] = useState(defaultMinify);
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const label = format.toUpperCase();
 
-  const doFormat = useCallback(
-    (text: string, shouldMinify: boolean, indentOpt: IndentOption) => {
+  const convert = useCallback(
+    (text: string) => {
       if (!text.trim()) {
         setOutput("");
         setError(null);
         return;
       }
       try {
-        let result: string;
-        if (shouldMinify) {
-          result = format === "json" ? minifyJson(text) : minifyXml(text);
-        } else {
-          const ind = getIndent(indentOpt);
-          result =
-            format === "json"
-              ? formatJson(text, ind)
-              : formatXml(text, typeof ind === "number" ? ind : 2);
-        }
-        setOutput(result);
+        setOutput(convertFn(text));
         setError(null);
       } catch (e) {
         setError((e as Error).message);
         setOutput("");
       }
     },
-    [format]
+    [convertFn]
   );
 
   const handleInputChange = (text: string) => {
     setInput(text);
-    doFormat(text, minify, indent);
-  };
-
-  const handleIndentChange = (opt: IndentOption) => {
-    setIndent(opt);
-    if (!minify) doFormat(input, false, opt);
-  };
-
-  const handleMinifyToggle = () => {
-    const next = !minify;
-    setMinify(next);
-    doFormat(input, next, indent);
+    convert(text);
   };
 
   const handleFile = (file: File) => {
@@ -88,7 +79,7 @@ export default function FormatterTool({
     reader.onload = (e) => {
       const text = (e.target?.result as string) ?? "";
       setInput(text);
-      doFormat(text, minify, indent);
+      convert(text);
     };
     reader.readAsText(file);
   };
@@ -101,7 +92,7 @@ export default function FormatterTool({
       if (file) handleFile(file);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [minify, indent]
+    [convertFn]
   );
 
   const handleCopy = async () => {
@@ -111,10 +102,9 @@ export default function FormatterTool({
   };
 
   const handleDownload = () => {
-    const ext = format === "json" ? "json" : "xml";
     const name = fileName
-      ? fileName.replace(/\.[^.]+$/, `.formatted.${ext}`)
-      : `formatted.${ext}`;
+      ? fileName.replace(/\.[^.]+$/, `.${outputExtension}`)
+      : `converted.${outputExtension}`;
     const blob = new Blob([output], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -138,33 +128,9 @@ export default function FormatterTool({
     <div className="flex flex-col gap-4 w-full">
       {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Indent selector */}
-        <div className="flex rounded-lg border border-slate-700 overflow-hidden">
-          {(["2", "4", "tab"] as IndentOption[]).map((opt) => (
-            <button
-              key={opt}
-              onClick={() => handleIndentChange(opt)}
-              className={`px-3 py-2 text-sm font-semibold transition-colors ${
-                indent === opt && !minify
-                  ? "bg-brand-600 text-white"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-100"
-              }`}
-            >
-              {opt === "tab" ? "Tab" : `${opt} spaces`}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-brand-400">
+          {inputLabel} → {outputLabel}
         </div>
-
-        <button
-          onClick={handleMinifyToggle}
-          className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-colors ${
-            minify
-              ? "bg-brand-600 text-white border-brand-600"
-              : "bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-100"
-          }`}
-        >
-          Minify
-        </button>
 
         {(input || fileName) && (
           <button onClick={handleClear} className="btn-ghost text-red-400 hover:text-red-300">
@@ -178,7 +144,7 @@ export default function FormatterTool({
         {/* Input panel */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="panel-label">{label} Input</span>
+            <span className="panel-label">{inputLabel} Input</span>
             <div className="flex items-center gap-2">
               {fileName && (
                 <span className="text-xs text-slate-500 truncate max-w-[200px]">
@@ -195,7 +161,7 @@ export default function FormatterTool({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={format === "json" ? ".json,.txt" : ".xml,.txt"}
+                accept={inputAccept}
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -218,7 +184,7 @@ export default function FormatterTool({
           >
             <textarea
               className="editor-textarea"
-              placeholder={`Paste your ${label} here, or drag & drop a file…`}
+              placeholder={`Paste your ${inputLabel} here, or drag & drop a file…`}
               value={input}
               onChange={(e) => handleInputChange(e.target.value)}
               spellCheck={false}
@@ -234,9 +200,7 @@ export default function FormatterTool({
         {/* Output panel */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="panel-label">
-              {minify ? "Minified" : "Formatted"} {label}
-            </span>
+            <span className="panel-label">{outputLabel} Output</span>
             {hasOutput && (
               <div className="flex items-center gap-2">
                 <button onClick={handleCopy} className="btn-ghost text-xs">
@@ -262,7 +226,7 @@ export default function FormatterTool({
             {error && (
               <div className="absolute inset-0 flex items-start p-4 bg-red-950/40 rounded-lg border border-red-800">
                 <div>
-                  <p className="text-red-400 font-semibold text-sm mb-1">Format error</p>
+                  <p className="text-red-400 font-semibold text-sm mb-1">Conversion error</p>
                   <p className="text-red-300 text-sm font-mono">{error}</p>
                 </div>
               </div>
