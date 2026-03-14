@@ -1,4 +1,5 @@
 import { XMLValidator } from "fast-xml-parser";
+import jsYaml from "js-yaml";
 
 export type ValidationResult = {
   valid: boolean;
@@ -72,4 +73,23 @@ export function validateXml(input: string): ValidationResult {
       column: result.err?.col,
     },
   };
+}
+
+// ─── YAML ───────────────────────────────────────────────────────────────────
+
+export function validateYaml(input: string): ValidationResult {
+  try {
+    jsYaml.load(input);
+    return { valid: true };
+  } catch (e) {
+    const err = e as jsYaml.YAMLException;
+    return {
+      valid: false,
+      error: {
+        message: err.reason ?? err.message,
+        line: err.mark?.line !== undefined ? err.mark.line + 1 : undefined,
+        column: err.mark?.column !== undefined ? err.mark.column + 1 : undefined,
+      },
+    };
+  }
 }

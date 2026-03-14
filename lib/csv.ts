@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import { jsonToXml, xmlToJson } from "./converter";
 
 /**
  * Flatten a nested object using dot notation for keys.
@@ -76,4 +77,16 @@ export function csvToJson(csvText: string): string {
   }
 
   return JSON.stringify(result.data, null, 2);
+}
+
+// ─── CSV ↔ XML (chain through JSON) ──────────────────────────────────────────
+
+export function csvToXml(csvText: string): string {
+  const jsonText = csvToJson(csvText);
+  return jsonToXml(jsonText);
+}
+
+export function xmlToCsv(xmlText: string): string {
+  const jsonText = xmlToJson(xmlText);
+  return jsonToCsv(jsonText);
 }

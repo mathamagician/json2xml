@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { formatJson, minifyJson, formatXml, minifyXml } from "@/lib/formatter";
+import { formatJson, minifyJson, formatXml, minifyXml, formatYaml, minifyYaml } from "@/lib/formatter";
 
-type Format = "json" | "xml";
+type Format = "json" | "xml" | "yaml";
 type IndentOption = "2" | "4" | "tab";
 
 function formatSize(bytes: number): string {
@@ -47,13 +47,15 @@ export default function FormatterTool({
       try {
         let result: string;
         if (shouldMinify) {
-          result = format === "json" ? minifyJson(text) : minifyXml(text);
+          result = format === "json" ? minifyJson(text) : format === "xml" ? minifyXml(text) : minifyYaml(text);
         } else {
           const ind = getIndent(indentOpt);
           result =
             format === "json"
               ? formatJson(text, ind)
-              : formatXml(text, typeof ind === "number" ? ind : 2);
+              : format === "xml"
+              ? formatXml(text, typeof ind === "number" ? ind : 2)
+              : formatYaml(text, typeof ind === "number" ? ind : 2);
         }
         setOutput(result);
         setError(null);
@@ -111,7 +113,7 @@ export default function FormatterTool({
   };
 
   const handleDownload = () => {
-    const ext = format === "json" ? "json" : "xml";
+    const ext = format === "json" ? "json" : format === "xml" ? "xml" : "yaml";
     const name = fileName
       ? fileName.replace(/\.[^.]+$/, `.formatted.${ext}`)
       : `formatted.${ext}`;
@@ -195,7 +197,7 @@ export default function FormatterTool({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={format === "json" ? ".json,.txt" : ".xml,.txt"}
+                accept={format === "json" ? ".json,.txt" : format === "xml" ? ".xml,.txt" : ".yaml,.yml,.txt"}
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];

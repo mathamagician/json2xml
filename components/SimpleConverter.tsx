@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef, useMemo } from "react";
 import { jsonToYaml, yamlToJson, xmlToYaml, yamlToXml } from "@/lib/yaml";
-import { jsonToCsv, csvToJson } from "@/lib/csv";
+import { jsonToCsv, csvToJson, csvToXml, xmlToCsv } from "@/lib/csv";
+import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown";
 
 export type ConversionType =
   | "json-to-yaml"
@@ -10,7 +11,11 @@ export type ConversionType =
   | "xml-to-yaml"
   | "yaml-to-xml"
   | "json-to-csv"
-  | "csv-to-json";
+  | "csv-to-json"
+  | "csv-to-xml"
+  | "xml-to-csv"
+  | "markdown-to-html"
+  | "html-to-markdown";
 
 type ConversionConfig = {
   fn: (input: string) => string;
@@ -27,6 +32,10 @@ const conversions: Record<ConversionType, ConversionConfig> = {
   "yaml-to-xml": { fn: yamlToXml, inputLabel: "YAML", outputLabel: "XML", inputAccept: ".yaml,.yml,.txt", outputExtension: "xml" },
   "json-to-csv": { fn: jsonToCsv, inputLabel: "JSON", outputLabel: "CSV", inputAccept: ".json,.txt", outputExtension: "csv" },
   "csv-to-json": { fn: csvToJson, inputLabel: "CSV", outputLabel: "JSON", inputAccept: ".csv,.tsv,.txt", outputExtension: "json" },
+  "csv-to-xml": { fn: csvToXml, inputLabel: "CSV", outputLabel: "XML", inputAccept: ".csv,.tsv,.txt", outputExtension: "xml" },
+  "xml-to-csv": { fn: xmlToCsv, inputLabel: "XML", outputLabel: "CSV", inputAccept: ".xml,.txt", outputExtension: "csv" },
+  "markdown-to-html": { fn: markdownToHtml, inputLabel: "Markdown", outputLabel: "HTML", inputAccept: ".md,.markdown,.txt", outputExtension: "html" },
+  "html-to-markdown": { fn: htmlToMarkdown, inputLabel: "HTML", outputLabel: "Markdown", inputAccept: ".html,.htm,.txt", outputExtension: "md" },
 };
 
 function formatSize(bytes: number): string {

@@ -1,4 +1,5 @@
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
+import jsYaml from "js-yaml";
 
 // ─── JSON ────────────────────────────────────────────────────────────────────
 
@@ -68,4 +69,27 @@ export function minifyXml(input: string): string {
   });
 
   return (builder.build(parsed) as string).trim();
+}
+
+// ─── YAML ───────────────────────────────────────────────────────────────────
+
+export function formatYaml(input: string, indent: number = 2): string {
+  let parsed: unknown;
+  try {
+    parsed = jsYaml.load(input);
+  } catch (e) {
+    throw new Error(`Invalid YAML — ${(e as Error).message}`);
+  }
+  return jsYaml.dump(parsed, { indent, lineWidth: -1, noRefs: true }).trimEnd();
+}
+
+export function minifyYaml(input: string): string {
+  let parsed: unknown;
+  try {
+    parsed = jsYaml.load(input);
+  } catch (e) {
+    throw new Error(`Invalid YAML — ${(e as Error).message}`);
+  }
+  // YAML doesn't truly "minify" like JSON, but we can use flow style (inline)
+  return jsYaml.dump(parsed, { flowLevel: 0, lineWidth: -1, noRefs: true }).trimEnd();
 }

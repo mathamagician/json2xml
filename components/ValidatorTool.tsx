@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { validateJson, validateXml, type ValidationResult } from "@/lib/validator";
+import { validateJson, validateXml, validateYaml, type ValidationResult } from "@/lib/validator";
 
-type Format = "json" | "xml";
+type Format = "json" | "xml" | "yaml";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -27,7 +27,7 @@ export default function ValidatorTool({ format }: { format: Format }) {
         setResult(null);
         return;
       }
-      const res = format === "json" ? validateJson(text) : validateXml(text);
+      const res = format === "json" ? validateJson(text) : format === "xml" ? validateXml(text) : validateYaml(text);
       setResult(res);
     },
     [format]
@@ -115,7 +115,7 @@ export default function ValidatorTool({ format }: { format: Format }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={format === "json" ? ".json,.txt" : ".xml,.txt"}
+                accept={format === "json" ? ".json,.txt" : format === "xml" ? ".xml,.txt" : ".yaml,.yml,.txt"}
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
