@@ -1,87 +1,18 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { jsonToHtmlTable, jsonToPreviewTable } from "@/lib/html-table";
+
+const WORKER_THRESHOLD = 512 * 1024;
+const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;
+const TEXTAREA_MAX = 10 * 1024 * 1024;
+
+type Progress = { phase: "reading" | "converting"; percent: number };
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function jsonToHtmlTable(jsonText: string): { html: string; preview: string } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    throw new Error("Invalid JSON — please check your input.");
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new Error("JSON must be an array of objects. Example: [{\"name\": \"Alice\", \"age\": 30}]");
-  }
-
-  if (parsed.length === 0) {
-    throw new Error("JSON array is empty — nothing to convert.");
-  }
-
-  // Collect all keys across all objects
-  const keys = new Set<string>();
-  for (const item of parsed) {
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      Object.keys(item as Record<string, unknown>).forEach((k) => keys.add(k));
-    }
-  }
-
-  if (keys.size === 0) {
-    throw new Error("No object keys found — array items must be objects.");
-  }
-
-  const headers = Array.from(keys);
-
-  const headerHtml = headers.map((h) => `    <th>${escapeHtml(h)}</th>`).join("\n");
-  const rowsHtml = parsed.map((item) => {
-    const obj = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-    const cells = headers.map((h) => {
-      const val = obj[h];
-      const display = val === null || val === undefined
-        ? ""
-        : typeof val === "object"
-        ? escapeHtml(JSON.stringify(val))
-        : escapeHtml(String(val));
-      return `    <td>${display}</td>`;
-    });
-    return `  <tr>\n${cells.join("\n")}\n  </tr>`;
-  });
-
-  const html = `<table>\n  <thead>\n  <tr>\n${headerHtml}\n  </tr>\n  </thead>\n  <tbody>\n${rowsHtml.join("\n")}\n  </tbody>\n</table>`;
-
-  // Preview with basic styling
-  const preview = `<table style="border-collapse:collapse;width:100%;font-size:14px;font-family:monospace;">
-  <thead>
-  <tr style="background:#1e293b;">
-${headers.map((h) => `    <th style="border:1px solid #334155;padding:8px 12px;text-align:left;color:#e2e8f0;">${escapeHtml(h)}</th>`).join("\n")}
-  </tr>
-  </thead>
-  <tbody>
-${parsed.map((item, i) => {
-    const obj = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-    const bg = i % 2 === 0 ? "#0f172a" : "#1e293b";
-    return `  <tr style="background:${bg};">
-${headers.map((h) => {
-      const val = obj[h];
-      const display = val === null || val === undefined ? "" : typeof val === "object" ? escapeHtml(JSON.stringify(val)) : escapeHtml(String(val));
-      return `    <td style="border:1px solid #334155;padding:8px 12px;color:#94a3b8;">${display}</td>`;
-    }).join("\n")}
-  </tr>`;
-  }).join("\n")}
-  </tbody>
-</table>`;
-
-  return { html, preview };
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 const SAMPLE_JSON = `[
@@ -95,49 +26,158 @@ export default function JsonToHtmlTable() {
   const [input, setInput] = useState("");
   const [html, setHtml] = useState("");
   const [preview, setPreview] = useState("");
+  const [totalRows, setTotalRows] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [hasLargeOutput, setHasLargeOutput] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+  const largeHtmlRef = useRef<string | null>(null);
+  const currentFileRef = useRef<File | null>(null);
+
+  useEffect(() => {
+    return () => { workerRef.current?.terminate(); };
+  }, []);
+
+  const getWorker = useCallback(() => {
+    if (!workerRef.current) {
+      workerRef.current = new Worker(
+        new URL("../lib/html-table.worker.ts", import.meta.url)
+      );
+    }
+    return workerRef.current;
+  }, []);
+
+  const applyResult = useCallback((resultHtml: string | null, resultPreview: string | null, rows: number, err: string | null) => {
+    setProgress(null);
+    if (err) {
+      setError(err);
+      setHtml("");
+      setPreview("");
+      setTotalRows(0);
+      setHasLargeOutput(false);
+      largeHtmlRef.current = null;
+    } else if (resultHtml !== null) {
+      setError(null);
+      setTotalRows(rows);
+      setPreview(resultPreview ?? "");
+      if (resultHtml.length > TEXTAREA_MAX) {
+        largeHtmlRef.current = resultHtml;
+        setHasLargeOutput(true);
+        setHtml("");
+      } else {
+        setHtml(resultHtml);
+        setHasLargeOutput(false);
+        largeHtmlRef.current = null;
+      }
+    }
+  }, []);
+
+  const attachWorkerHandler = useCallback((id: number) => {
+    const worker = getWorker();
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.id !== id) return;
+      if (msg.type === "progress") {
+        setProgress({ phase: msg.phase, percent: msg.percent });
+        return;
+      }
+      applyResult(msg.html, msg.preview, msg.totalRows, msg.error);
+    };
+    return worker;
+  }, [getWorker, applyResult]);
+
+  const convertViaWorker = useCallback((text: string) => {
+    setProgress({ phase: "converting", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert", id, text });
+  }, [attachWorkerHandler]);
+
+  const convertLargeFile = useCallback((file: File) => {
+    setHtml("");
+    setPreview("");
+    setError(null);
+    setHasLargeOutput(false);
+    largeHtmlRef.current = null;
+    setProgress({ phase: "reading", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert-file", id, file });
+  }, [attachWorkerHandler]);
+
+  const convertSync = useCallback((text: string) => {
+    setProgress(null);
+    try {
+      const result = jsonToHtmlTable(text);
+      const previewResult = jsonToPreviewTable(text, 100);
+      setHtml(result.html);
+      setPreview(previewResult.preview);
+      setTotalRows(result.totalRows);
+      setError(null);
+      setHasLargeOutput(false);
+      largeHtmlRef.current = null;
+    } catch (e) {
+      setError((e as Error).message);
+      setHtml("");
+      setPreview("");
+      setTotalRows(0);
+    }
+  }, []);
 
   const convert = useCallback((text: string) => {
     if (!text.trim()) {
       setHtml("");
       setPreview("");
       setError(null);
+      setProgress(null);
+      setTotalRows(0);
+      setHasLargeOutput(false);
+      largeHtmlRef.current = null;
       return;
     }
-    try {
-      const result = jsonToHtmlTable(text);
-      setHtml(result.html);
-      setPreview(result.preview);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-      setHtml("");
-      setPreview("");
+    if (text.length > WORKER_THRESHOLD) {
+      convertViaWorker(text);
+    } else {
+      convertSync(text);
     }
-  }, []);
+  }, [convertViaWorker, convertSync]);
 
   const handleInputChange = (text: string) => {
     setInput(text);
+    currentFileRef.current = null;
+    setFileSize(null);
+    setFileName(null);
     convert(text);
   };
 
   const handleFile = (file: File) => {
     setFileName(file.name);
     setFileSize(file.size);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) ?? "";
-      setInput(text);
-      convert(text);
-    };
-    reader.readAsText(file);
+    setHasLargeOutput(false);
+    largeHtmlRef.current = null;
+
+    if (file.size > FILE_WORKER_THRESHOLD) {
+      currentFileRef.current = file;
+      setInput("");
+      convertLargeFile(file);
+    } else {
+      currentFileRef.current = null;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = (e.target?.result as string) ?? "";
+        setInput(text);
+        convert(text);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -149,14 +189,16 @@ export default function JsonToHtmlTable() {
   }, []);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(html);
+    const content = largeHtmlRef.current ?? html;
+    await navigator.clipboard.writeText(content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownload = () => {
+    const content = largeHtmlRef.current ?? html;
     const name = fileName ? fileName.replace(/\.[^.]+$/, ".html") : "table.html";
-    const blob = new Blob([html], { type: "text/html" });
+    const blob = new Blob([content], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -167,7 +209,7 @@ export default function JsonToHtmlTable() {
 
   const handleSample = () => {
     setInput(SAMPLE_JSON);
-    convert(SAMPLE_JSON);
+    convertSync(SAMPLE_JSON);
   };
 
   const handleClear = () => {
@@ -177,7 +219,16 @@ export default function JsonToHtmlTable() {
     setError(null);
     setFileName(null);
     setFileSize(null);
+    setProgress(null);
+    setTotalRows(0);
+    setHasLargeOutput(false);
+    largeHtmlRef.current = null;
+    currentFileRef.current = null;
   };
+
+  const isProcessing = progress !== null;
+  const hasOutput = html.length > 0 || hasLargeOutput;
+  const showFileOverlay = fileSize !== null && fileSize > FILE_WORKER_THRESHOLD;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -186,7 +237,7 @@ export default function JsonToHtmlTable() {
           JSON → HTML Table
         </div>
 
-        {html && (
+        {hasOutput && !isProcessing && (
           <div className="flex rounded-lg border border-slate-700 overflow-hidden">
             <button
               onClick={() => setShowRaw(false)}
@@ -217,6 +268,14 @@ export default function JsonToHtmlTable() {
           </button>
         )}
       </div>
+
+      {/* Large file advisory */}
+      {fileSize !== null && fileSize > 50 * 1024 * 1024 && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-4 py-2 text-amber-300 text-sm">
+          <span>⚠</span>
+          <span>Large file ({formatSize(fileSize)}) — conversion runs off the main thread so the page stays responsive.</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Input */}
@@ -253,11 +312,17 @@ export default function JsonToHtmlTable() {
           >
             <textarea
               className="editor-textarea"
-              placeholder='Paste a JSON array of objects here, e.g. [{"name": "Alice", "age": 30}]'
+              placeholder='Paste a JSON array here, or an object containing an array…'
               value={input}
               onChange={(e) => handleInputChange(e.target.value)}
               spellCheck={false}
             />
+            {showFileOverlay && !isDragging && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 rounded-lg pointer-events-none gap-1">
+                <p className="text-slate-300 font-medium text-sm">{fileName}</p>
+                <p className="text-slate-500 text-xs">{formatSize(fileSize!)} loaded</p>
+              </div>
+            )}
             {isDragging && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 rounded-lg pointer-events-none">
                 <p className="text-brand-400 font-semibold">Drop file here</p>
@@ -269,12 +334,21 @@ export default function JsonToHtmlTable() {
         {/* Output */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="panel-label">{showRaw ? "Raw HTML" : "Table Preview"}</span>
-            {html && (
+            <span className="panel-label">
+              {showRaw ? "Raw HTML" : "Table Preview"}
+              {totalRows > 0 && !isProcessing && (
+                <span className="text-slate-500 text-xs font-normal ml-2">
+                  {totalRows > 100 && !showRaw ? `showing 100 of ${totalRows.toLocaleString()} rows` : `${totalRows.toLocaleString()} rows`}
+                </span>
+              )}
+            </span>
+            {hasOutput && !isProcessing && (
               <div className="flex items-center gap-2">
-                <button onClick={handleCopy} className="btn-ghost text-xs">
-                  {copied ? "✓ Copied!" : "Copy HTML"}
-                </button>
+                {html && (
+                  <button onClick={handleCopy} className="btn-ghost text-xs">
+                    {copied ? "✓ Copied!" : "Copy HTML"}
+                  </button>
+                )}
                 <button onClick={handleDownload} className="btn-ghost text-xs">
                   Download
                 </button>
@@ -291,7 +365,38 @@ export default function JsonToHtmlTable() {
                 readOnly
                 spellCheck={false}
               />
-              {error && (
+              {/* Progress overlay */}
+              {isProcessing && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-4 px-8">
+                  <p className="text-slate-300 text-sm font-medium">
+                    {progress.phase === "reading" ? "Reading file…" : "Converting…"}
+                  </p>
+                  <div className="w-full max-w-xs flex flex-col gap-2">
+                    {progress.phase === "reading" ? (
+                      <>
+                        <div className="w-full bg-slate-700 rounded-full h-2">
+                          <div className="bg-sky-500 h-2 rounded-full transition-all duration-200" style={{ width: `${progress.percent}%` }} />
+                        </div>
+                        <p className="text-slate-500 text-xs text-center">{progress.percent}%</p>
+                      </>
+                    ) : (
+                      <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                        <div className="h-2 bg-sky-500 rounded-full w-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* Large output download-only */}
+              {hasLargeOutput && !isProcessing && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3">
+                  <div className="text-sky-400 text-3xl">✓</div>
+                  <p className="text-slate-200 font-semibold text-sm">Conversion complete — {totalRows.toLocaleString()} rows</p>
+                  <p className="text-slate-400 text-xs">Output is too large to preview as raw HTML</p>
+                  <button onClick={handleDownload} className="btn-primary text-sm mt-1">Download HTML</button>
+                </div>
+              )}
+              {!isProcessing && error && (
                 <div className="absolute inset-0 flex items-start p-4 bg-red-950/40 rounded-lg border border-red-800">
                   <div>
                     <p className="text-red-400 font-semibold text-sm mb-1">Conversion error</p>
@@ -301,11 +406,33 @@ export default function JsonToHtmlTable() {
               )}
             </div>
           ) : (
-            <div className="bg-slate-900 rounded-lg border border-slate-800 min-h-[400px] max-h-[600px] overflow-auto p-4">
-              {!html && !error && (
+            <div className="bg-slate-900 rounded-lg border border-slate-800 min-h-[400px] max-h-[600px] overflow-auto p-4 relative">
+              {!hasOutput && !error && !isProcessing && (
                 <p className="text-slate-500 text-sm">Paste a JSON array to see the table preview…</p>
               )}
-              {error && (
+              {/* Progress overlay for preview mode */}
+              {isProcessing && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-4 px-8 z-10">
+                  <p className="text-slate-300 text-sm font-medium">
+                    {progress.phase === "reading" ? "Reading file…" : "Converting…"}
+                  </p>
+                  <div className="w-full max-w-xs flex flex-col gap-2">
+                    {progress.phase === "reading" ? (
+                      <>
+                        <div className="w-full bg-slate-700 rounded-full h-2">
+                          <div className="bg-sky-500 h-2 rounded-full transition-all duration-200" style={{ width: `${progress.percent}%` }} />
+                        </div>
+                        <p className="text-slate-500 text-xs text-center">{progress.percent}%</p>
+                      </>
+                    ) : (
+                      <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                        <div className="h-2 bg-sky-500 rounded-full w-full animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {error && !isProcessing && (
                 <div className="flex items-start gap-2">
                   <span className="text-red-400 text-lg">✗</span>
                   <div>
@@ -314,7 +441,7 @@ export default function JsonToHtmlTable() {
                   </div>
                 </div>
               )}
-              {html && !error && (
+              {preview && !error && !isProcessing && (
                 <div dangerouslySetInnerHTML={{ __html: preview }} />
               )}
             </div>

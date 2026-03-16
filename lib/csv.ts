@@ -28,6 +28,46 @@ function flattenObject(
   return result;
 }
 
+/**
+ * Extract a usable array from parsed JSON.
+ * Handles: direct array, object with one array property, object with nested arrays.
+ * Returns the array or throws a descriptive error.
+ */
+function extractArray(parsed: unknown): unknown[] {
+  // Direct array
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) throw new Error("JSON array is empty — nothing to convert.");
+    return parsed;
+  }
+
+  // Single object — look for array properties
+  if (parsed !== null && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    const arrayKeys = Object.keys(obj).filter((k) => Array.isArray(obj[k]));
+
+    if (arrayKeys.length === 1) {
+      const arr = obj[arrayKeys[0]] as unknown[];
+      if (arr.length === 0) throw new Error(`Found array "${arrayKeys[0]}" but it is empty.`);
+      return arr;
+    }
+
+    if (arrayKeys.length > 1) {
+      throw new Error(
+        `Found multiple arrays in your JSON: ${arrayKeys.map((k) => `"${k}"`).join(", ")}. ` +
+        `Please pass just the array you want to convert, e.g. extract the "${arrayKeys[0]}" property.`
+      );
+    }
+
+    // No array properties — wrap the single object as a one-row table
+    return [obj];
+  }
+
+  throw new Error(
+    "JSON must be an array of objects or an object containing an array. " +
+    'Example: [{"name": "Alice", "age": 30}]'
+  );
+}
+
 export function jsonToCsv(jsonText: string): string {
   let parsed: unknown;
   try {
@@ -36,18 +76,10 @@ export function jsonToCsv(jsonText: string): string {
     throw new Error("Invalid JSON — please check your input.");
   }
 
-  if (!Array.isArray(parsed)) {
-    throw new Error(
-      "JSON must be an array of objects to convert to CSV. Example: [{\"name\": \"Alice\", \"age\": 30}]"
-    );
-  }
-
-  if (parsed.length === 0) {
-    throw new Error("JSON array is empty — nothing to convert.");
-  }
+  const items = extractArray(parsed);
 
   // Flatten nested objects
-  const flattened = parsed.map((item) => {
+  const flattened = items.map((item) => {
     if (item !== null && typeof item === "object" && !Array.isArray(item)) {
       return flattenObject(item as Record<string, unknown>);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { jsonToYaml, yamlToJson, xmlToYaml, yamlToXml } from "@/lib/yaml";
 import { jsonToCsv, csvToJson, csvToXml, xmlToCsv } from "@/lib/csv";
 import { markdownToHtml, htmlToMarkdown } from "@/lib/markdown";
@@ -52,6 +52,14 @@ const sampleData: Record<ConversionType, string> = {
   "html-to-markdown": '<h1>Hello World</h1>\n<p>This is a <strong>bold</strong> and <em>italic</em> paragraph.</p>\n<h2>Features</h2>\n<ul>\n<li>Item one</li>\n<li>Item two</li>\n</ul>',
 };
 
+// Thresholds — same as Converter.tsx
+const WORKER_THRESHOLD = 512 * 1024;       // 512 KB — use worker
+const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;  // 5 MB — read file in worker
+const TEXTAREA_MAX = 10 * 1024 * 1024;     // 10 MB — download-only output
+const SIZE_WARN_BYTES = 50 * 1024 * 1024;  // 50 MB — advisory banner
+
+type Progress = { phase: "reading" | "converting"; percent: number };
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -69,42 +77,151 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [hasLargeOutput, setHasLargeOutput] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const largeOutputRef = useRef<string | null>(null);
+  const currentFileRef = useRef<File | null>(null);
 
-  const convert = useCallback(
-    (text: string) => {
-      if (!text.trim()) {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      workerRef.current?.terminate();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const getWorker = useCallback(() => {
+    if (!workerRef.current) {
+      workerRef.current = new Worker(
+        new URL("../lib/simple-converter.worker.ts", import.meta.url)
+      );
+    }
+    return workerRef.current;
+  }, []);
+
+  const applyResult = useCallback((result: string | null, err: string | null) => {
+    setProgress(null);
+    if (err) {
+      setError(err);
+      setOutput("");
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+    } else if (result !== null) {
+      setError(null);
+      if (result.length > TEXTAREA_MAX) {
+        largeOutputRef.current = result;
+        setHasLargeOutput(true);
         setOutput("");
-        setError(null);
+      } else {
+        setOutput(result);
+        setHasLargeOutput(false);
+        largeOutputRef.current = null;
+      }
+    }
+  }, []);
+
+  const attachWorkerHandler = useCallback((id: number) => {
+    const worker = getWorker();
+    worker.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (msg.id !== id) return;
+      if (msg.type === "progress") {
+        setProgress({ phase: msg.phase, percent: msg.percent });
         return;
       }
-      try {
-        setOutput(convertFn(text));
-        setError(null);
-      } catch (e) {
-        setError((e as Error).message);
-        setOutput("");
-      }
-    },
-    [convertFn]
-  );
+      applyResult(msg.result, msg.error);
+    };
+    return worker;
+  }, [getWorker, applyResult]);
+
+  // Large file: send File to worker — no main-thread reading
+  const convertLargeFile = useCallback((file: File) => {
+    setOutput("");
+    setError(null);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+    setProgress({ phase: "reading", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert-file", id, file, conversion });
+  }, [attachWorkerHandler, conversion]);
+
+  // Text conversion via worker (for large pasted/typed text)
+  const convertViaWorker = useCallback((text: string) => {
+    setProgress({ phase: "converting", percent: 0 });
+    const id = ++requestIdRef.current;
+    const worker = attachWorkerHandler(id);
+    worker.postMessage({ type: "convert", id, text, conversion });
+  }, [attachWorkerHandler, conversion]);
+
+  // Sync conversion for small text (instant)
+  const convertSync = useCallback((text: string) => {
+    setProgress(null);
+    try {
+      const result = convertFn(text);
+      setOutput(result);
+      setError(null);
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+    } catch (e) {
+      setError((e as Error).message);
+      setOutput("");
+    }
+  }, [convertFn]);
+
+  // Main convert dispatcher
+  const convert = useCallback((text: string) => {
+    if (!text.trim()) {
+      setOutput("");
+      setError(null);
+      setProgress(null);
+      setHasLargeOutput(false);
+      largeOutputRef.current = null;
+      return;
+    }
+    if (text.length > WORKER_THRESHOLD) {
+      convertViaWorker(text);
+    } else {
+      convertSync(text);
+    }
+  }, [convertViaWorker, convertSync]);
 
   const handleInputChange = (text: string) => {
     setInput(text);
-    convert(text);
+    currentFileRef.current = null;
+    setFileSize(null);
+    setFileName(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const delay = text.length > WORKER_THRESHOLD ? 300 : 0;
+    debounceRef.current = setTimeout(() => convert(text), delay);
   };
 
   const handleFile = (file: File) => {
     setFileName(file.name);
     setFileSize(file.size);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) ?? "";
-      setInput(text);
-      convert(text);
-    };
-    reader.readAsText(file);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+
+    if (file.size > FILE_WORKER_THRESHOLD) {
+      // Large file: read + convert entirely in worker
+      currentFileRef.current = file;
+      setInput("");
+      convertLargeFile(file);
+    } else {
+      currentFileRef.current = null;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = (e.target?.result as string) ?? "";
+        setInput(text);
+        convert(text);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleDrop = useCallback(
@@ -115,7 +232,7 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
       if (file) handleFile(file);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [convertFn]
+    [conversion]
   );
 
   const handleCopy = async () => {
@@ -125,10 +242,11 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
   };
 
   const handleDownload = () => {
+    const content = largeOutputRef.current ?? output;
     const name = fileName
       ? fileName.replace(/\.[^.]+$/, `.${outputExtension}`)
       : `converted.${outputExtension}`;
-    const blob = new Blob([output], { type: "text/plain" });
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -147,9 +265,16 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
     setError(null);
     setFileName(null);
     setFileSize(null);
+    setProgress(null);
+    setHasLargeOutput(false);
+    largeOutputRef.current = null;
+    currentFileRef.current = null;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
   };
 
-  const hasOutput = output.length > 0;
+  const isProcessing = progress !== null;
+  const hasOutput = output.length > 0 || hasLargeOutput;
+  const showFileOverlay = fileSize !== null && fileSize > FILE_WORKER_THRESHOLD;
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -169,6 +294,16 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
           </button>
         )}
       </div>
+
+      {/* Large file advisory banner */}
+      {fileSize !== null && fileSize > SIZE_WARN_BYTES && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-4 py-2 text-amber-300 text-sm">
+          <span>⚠</span>
+          <span>
+            Large file ({formatSize(fileSize)}) — conversion runs off the main thread so the page stays responsive.
+          </span>
+        </div>
+      )}
 
       {/* Two-panel editor */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -220,6 +355,13 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
               onChange={(e) => handleInputChange(e.target.value)}
               spellCheck={false}
             />
+            {/* Large file loaded overlay */}
+            {showFileOverlay && !isDragging && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 rounded-lg pointer-events-none gap-1">
+                <p className="text-slate-300 font-medium text-sm">{fileName}</p>
+                <p className="text-slate-500 text-xs">{formatSize(fileSize!)} loaded</p>
+              </div>
+            )}
             {isDragging && (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 rounded-lg pointer-events-none">
                 <p className="text-brand-400 font-semibold">Drop file here</p>
@@ -233,11 +375,13 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="panel-label">{outputLabel} Output</span>
-            {hasOutput && (
+            {hasOutput && !isProcessing && (
               <div className="flex items-center gap-2">
-                <button onClick={handleCopy} className="btn-ghost text-xs">
-                  {copied ? "✓ Copied!" : "Copy"}
-                </button>
+                {output && (
+                  <button onClick={handleCopy} className="btn-ghost text-xs">
+                    {copied ? "✓ Copied!" : "Copy"}
+                  </button>
+                )}
                 <button onClick={handleDownload} className="btn-ghost text-xs">
                   Download
                 </button>
@@ -254,8 +398,46 @@ export default function SimpleConverter({ conversion }: { conversion: Conversion
               spellCheck={false}
             />
 
+            {/* Progress overlay */}
+            {isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-4 px-8">
+                <p className="text-slate-300 text-sm font-medium">
+                  {progress.phase === "reading" ? "Reading file…" : "Converting…"}
+                </p>
+                <div className="w-full max-w-xs flex flex-col gap-2">
+                  {progress.phase === "reading" ? (
+                    <>
+                      <div className="w-full bg-slate-700 rounded-full h-2">
+                        <div
+                          className="bg-sky-500 h-2 rounded-full transition-all duration-200"
+                          style={{ width: `${progress.percent}%` }}
+                        />
+                      </div>
+                      <p className="text-slate-500 text-xs text-center">{progress.percent}%</p>
+                    </>
+                  ) : (
+                    <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div className="h-2 bg-sky-500 rounded-full w-full animate-pulse" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Large output: download-only */}
+            {hasLargeOutput && !isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3">
+                <div className="text-sky-400 text-3xl">✓</div>
+                <p className="text-slate-200 font-semibold text-sm">Conversion complete</p>
+                <p className="text-slate-400 text-xs">Output is too large to preview</p>
+                <button onClick={handleDownload} className="btn-primary text-sm mt-1">
+                  Download {outputLabel}
+                </button>
+              </div>
+            )}
+
             {/* Error overlay */}
-            {error && (
+            {!isProcessing && error && (
               <div className="absolute inset-0 flex items-start p-4 bg-red-950/40 rounded-lg border border-red-800">
                 <div>
                   <p className="text-red-400 font-semibold text-sm mb-1">Conversion error</p>
