@@ -27,32 +27,7 @@ onmessage = (e: MessageEvent<InMessage>) => {
     const { id, file, direction } = msg;
 
     if (file.size > STREAM_THRESHOLD) {
-      // Large file: stream in chunks to avoid full in-memory load
-      const onProgress = (loaded: number, total: number) => {
-        const percent = Math.round((loaded / total) * 100);
-        postMessage({ type: "progress", id, phase: "converting", percent, loaded, total });
-      };
-
-      const streamFn =
-        direction === "json-to-xml"
-          ? streamJsonToXml(file, onProgress)
-          : streamXmlToJson(file, onProgress);
-
-      streamFn
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          const ext = direction === "json-to-xml" ? "xml" : "json";
-          postMessage({ type: "result-blob-url", id, url, ext, error: null });
-        })
-        .catch((err) => {
-          const msg = (err as Error).message;
-          if (msg === "FALLBACK_TO_BULK") {
-            // Non-array/non-object JSON or other edge case — fall back to bulk
-            bulkConvert(id, file, direction);
-          } else {
-            postMessage({ type: "result-blob-url", id, url: null, ext: null, error: msg });
-          }
-        });
+      streamingConvert(id, file, direction);
     } else {
       bulkConvert(id, file, direction);
     }
@@ -76,7 +51,14 @@ function bulkConvert(id: number, file: File, direction: Direction) {
       const result = direction === "json-to-xml" ? jsonToXml(text) : xmlToJson(text);
       postMessage({ type: "result", id, result, error: null });
     } catch (err) {
-      postMessage({ type: "result", id, result: null, error: (err as Error).message });
+      const msg = (err as Error).message;
+      // V8 max string length exceeded — output too large for a JS string.
+      // Automatically retry via the streaming path which uses Blob output instead.
+      if (msg === "Invalid string length" && file) {
+        streamingConvert(id, file, direction);
+      } else {
+        postMessage({ type: "result", id, result: null, error: msg });
+      }
     }
   };
 
@@ -85,4 +67,31 @@ function bulkConvert(id: number, file: File, direction: Direction) {
   };
 
   reader.readAsText(file);
+}
+
+function streamingConvert(id: number, file: File, direction: Direction) {
+  const onProgress = (loaded: number, total: number) => {
+    const percent = Math.round((loaded / total) * 100);
+    postMessage({ type: "progress", id, phase: "converting", percent, loaded, total });
+  };
+
+  const streamFn =
+    direction === "json-to-xml"
+      ? streamJsonToXml(file, onProgress)
+      : streamXmlToJson(file, onProgress);
+
+  streamFn
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const ext = direction === "json-to-xml" ? "xml" : "json";
+      postMessage({ type: "result-blob-url", id, url, ext, error: null });
+    })
+    .catch((err) => {
+      const msg = (err as Error).message;
+      if (msg === "FALLBACK_TO_BULK") {
+        bulkConvert(id, file, direction);
+      } else {
+        postMessage({ type: "result-blob-url", id, url: null, ext: null, error: msg });
+      }
+    });
 }
