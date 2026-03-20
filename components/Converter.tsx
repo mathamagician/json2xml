@@ -48,6 +48,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [hasLargeOutput, setHasLargeOutput] = useState(false);
+  const [conversionWarning, setConversionWarning] = useState<string | null>(null);
+  const [streamStats, setStreamStats] = useState<{ processed: number; skipped: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -82,6 +84,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   // Apply worker result — shared by both conversion paths
   const applyResult = useCallback((result: string | null, err: string | null) => {
     setProgress(null);
+    setConversionWarning(null);
+    setStreamStats(null);
     if (err) {
       setError(err);
       setOutput("");
@@ -112,19 +116,34 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
         setProgress({ phase: msg.phase, percent: msg.percent, loaded: msg.loaded, total: msg.total });
         return;
       }
+      if (msg.type === "warning") {
+        setConversionWarning(
+          msg.dataError
+            ? "Data errors detected — attempting partial conversion via streaming…"
+            : "Output too large for direct render — switching to streaming download…"
+        );
+        return;
+      }
       if (msg.type === "result-blob-url") {
         // Streaming large-file result — output is a Blob URL for direct download
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = msg.url ?? null;
         setProgress(null);
+        setConversionWarning(null);
         if (msg.error) {
           setError(msg.error);
           setHasLargeOutput(false);
+          setStreamStats(null);
         } else {
           setError(null);
           setHasLargeOutput(true);
           setOutput("");
           largeOutputRef.current = null;
+          setStreamStats(
+            msg.processed !== undefined
+              ? { processed: msg.processed, skipped: msg.skipped ?? 0 }
+              : null
+          );
         }
         return;
       }
@@ -309,6 +328,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     currentFileRef.current = null;
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setConversionWarning(null);
+    setStreamStats(null);
   };
 
   const isProcessing = progress !== null;
@@ -371,6 +392,14 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
           </button>
         )}
       </div>
+
+      {/* Data error / fallback warning banner */}
+      {conversionWarning && (
+        <div className="flex items-center gap-2 rounded-lg border border-orange-700 bg-orange-950/40 px-4 py-2 text-orange-300 text-sm">
+          <span>⚠</span>
+          <span>{conversionWarning}</span>
+        </div>
+      )}
 
       {/* Large file advisory banner */}
       {fileSize !== null && fileSize > SIZE_WARN_BYTES && (
@@ -504,10 +533,26 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
 
             {/* Large output: download-only mode (too big to render in textarea) */}
             {hasLargeOutput && !isProcessing && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3">
-                <div className="text-sky-400 text-3xl">✓</div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3 px-6">
+                <div className={`text-3xl ${streamStats?.skipped ? "text-amber-400" : "text-sky-400"}`}>
+                  {streamStats?.skipped ? "⚠" : "✓"}
+                </div>
                 <p className="text-slate-200 font-semibold text-sm">Conversion complete</p>
-                <p className="text-slate-400 text-xs">Output is too large to preview</p>
+                {streamStats ? (
+                  <div className="text-center">
+                    <p className="text-slate-300 text-xs">
+                      {streamStats.processed.toLocaleString()} records converted
+                      {streamStats.skipped > 0 && (
+                        <span className="text-amber-400">
+                          {" "}· {streamStats.skipped.toLocaleString()} skipped (
+                          {((streamStats.skipped / (streamStats.processed + streamStats.skipped)) * 100).toFixed(1)}% parse errors)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-slate-400 text-xs">Output is too large to preview</p>
+                )}
                 <button onClick={handleDownload} className="btn-primary text-sm mt-1">
                   Download {targetFormat.toUpperCase()}
                 </button>

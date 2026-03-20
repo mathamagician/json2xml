@@ -49,6 +49,12 @@ function valueToXml(key: string, value: unknown, depth: number): string {
   return `${pad}<${tag}>${escapeXml(String(value))}</${tag}>`;
 }
 
+export type StreamResult = {
+  blob: Blob;
+  processed: number; // elements successfully converted
+  skipped: number;   // elements that failed to parse and were dropped
+};
+
 /**
  * Stream a large JSON file to XML.
  * Throws Error("FALLBACK_TO_BULK") if the file doesn't start with [ or { (unexpected format).
@@ -56,8 +62,10 @@ function valueToXml(key: string, value: unknown, depth: number): string {
 export async function streamJsonToXml(
   file: File,
   onProgress: (loaded: number, total: number) => void
-): Promise<Blob> {
+): Promise<StreamResult> {
   const out: string[] = ['<?xml version="1.0" encoding="UTF-8"?>\n<root>\n'];
+  let processed = 0;
+  let skipped = 0;
 
   let buf = "";        // unprocessed text carried between chunks
   let started = false; // true once we've found the root [ or {
@@ -112,7 +120,7 @@ export async function streamJsonToXml(
           if (primitiveStart !== -1) {
             const prim = buf.substring(primitiveStart, i).trimEnd();
             if (prim) {
-              try { out.push(valueToXml("item", JSON.parse(prim), 1) + "\n"); } catch { /* skip */ }
+              try { out.push(valueToXml("item", JSON.parse(prim), 1) + "\n"); processed++; } catch { skipped++; }
             }
             primitiveStart = -1;
           }
@@ -123,7 +131,7 @@ export async function streamJsonToXml(
           if (primitiveStart !== -1) {
             const prim = buf.substring(primitiveStart, i).trimEnd();
             if (prim) {
-              try { out.push(valueToXml("item", JSON.parse(prim), 1) + "\n"); } catch { /* skip */ }
+              try { out.push(valueToXml("item", JSON.parse(prim), 1) + "\n"); processed++; } catch { skipped++; }
             }
             primitiveStart = -1;
           }
@@ -145,12 +153,14 @@ export async function streamJsonToXml(
                 for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
                   out.push(valueToXml(k, v, 1) + "\n");
                 }
+                processed++;
                 done = true;
                 i++;
                 break;
               }
               out.push(valueToXml("item", parsed, 1) + "\n");
-            } catch { /* skip malformed element */ }
+              processed++;
+            } catch { skipped++; }
             elementStart = -1;
           }
         }
@@ -167,5 +177,5 @@ export async function streamJsonToXml(
   }
 
   out.push("</root>");
-  return new Blob(out, { type: "text/xml" });
+  return { blob: new Blob(out, { type: "text/xml" }), processed, skipped };
 }

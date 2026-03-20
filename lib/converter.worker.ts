@@ -51,14 +51,13 @@ function bulkConvert(id: number, file: File, direction: Direction) {
       const result = direction === "json-to-xml" ? jsonToXml(text) : xmlToJson(text);
       postMessage({ type: "result", id, result, error: null });
     } catch (err) {
-      const msg = (err as Error).message;
-      // V8 max string length exceeded — output too large for a JS string.
-      // Automatically retry via the streaming path which uses Blob output instead.
-      if (msg === "Invalid string length" && file) {
-        streamingConvert(id, file, direction);
-      } else {
-        postMessage({ type: "result", id, result: null, error: msg });
-      }
+      const errMsg = (err as Error).message;
+      // Both "Invalid string length" (output too large) and genuine parse errors
+      // fall back to streaming, which can recover partial valid data.
+      // Signal the UI to show a soft warning before retrying.
+      const isDataError = errMsg !== "Invalid string length";
+      postMessage({ type: "warning", id, dataError: isDataError });
+      streamingConvert(id, file, direction);
     }
   };
 
@@ -81,10 +80,17 @@ function streamingConvert(id: number, file: File, direction: Direction) {
       : streamXmlToJson(file, onProgress);
 
   streamFn
-    .then((blob) => {
+    .then((result) => {
+      // streamJsonToXml returns { blob, processed, skipped }
+      // streamXmlToJson returns a plain Blob (no element-level counting)
+      const isStreamResult = result && typeof result === "object" && "blob" in result;
+      const blob = isStreamResult ? (result as { blob: Blob }).blob : (result as Blob);
+      const processed = isStreamResult ? (result as { processed: number }).processed : undefined;
+      const skipped = isStreamResult ? (result as { skipped: number }).skipped : undefined;
+
       const url = URL.createObjectURL(blob);
       const ext = direction === "json-to-xml" ? "xml" : "json";
-      postMessage({ type: "result-blob-url", id, url, ext, error: null });
+      postMessage({ type: "result-blob-url", id, url, ext, error: null, processed, skipped });
     })
     .catch((err) => {
       const msg = (err as Error).message;
