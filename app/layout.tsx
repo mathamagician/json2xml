@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://json2xml.com"),
   title: "JSON2XML — Free JSON ↔ XML Converter Online",
   description:
-    "Convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 500 MB. Free, private, no sign-up — your data stays on your machine.",
+    "Convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 2 GB. Free, private, no sign-up — your data stays on your machine.",
   keywords: [
     "json to xml",
     "xml to json",
@@ -54,6 +54,18 @@ gtag('js', new Date());
 gtag('config', 'G-GSY3ECW9VC');`,
           }}
         />
+        {/* Google Translate */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `function googleTranslateElementInit() {
+  new google.translate.TranslateElement(
+    { pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE },
+    'google_translate_element'
+  );
+}`,
+          }}
+        />
+        <script async={true} src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" />
         {/* Google AdSense */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script

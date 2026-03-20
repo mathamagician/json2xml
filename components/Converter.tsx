@@ -7,12 +7,13 @@ import InputStats from "@/components/InputStats";
 type Direction = "json-to-xml" | "xml-to-json";
 
 // Thresholds
-const WORKER_THRESHOLD = 512 * 1024;       // 512 KB — use worker for typed/pasted text
-const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;  // 5 MB — read file in worker, don't touch main thread
-const TEXTAREA_MAX = 10 * 1024 * 1024;     // 10 MB — don't render output in textarea, show download-only
-const SIZE_WARN_BYTES = 50 * 1024 * 1024;  // 50 MB — show advisory banner
+const WORKER_THRESHOLD = 512 * 1024;             // 512 KB — use worker for typed/pasted text
+const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;   // 5 MB — read file in worker, don't touch main thread
+const TEXTAREA_MAX = 10 * 1024 * 1024;            // 10 MB — don't render output in textarea, show download-only
+const SIZE_WARN_BYTES = 200 * 1024 * 1024;        // 200 MB — show advisory banner
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024;    // 2 GB — hard cap
 
-type Progress = { phase: "reading" | "converting"; percent: number };
+type Progress = { phase: "reading" | "converting"; percent: number; loaded?: number; total?: number };
 
 const SAMPLE_JSON = `{
   "store": {
@@ -53,6 +54,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   const requestIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const largeOutputRef = useRef<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null); // for streaming large-file output
   // Hold File ref for large files so direction-change can re-convert
   const currentFileRef = useRef<File | null>(null);
 
@@ -64,6 +66,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     return () => {
       workerRef.current?.terminate();
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
   }, []);
 
@@ -106,7 +109,23 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
       const msg = e.data;
       if (msg.id !== id) return; // stale response
       if (msg.type === "progress") {
-        setProgress({ phase: msg.phase, percent: msg.percent });
+        setProgress({ phase: msg.phase, percent: msg.percent, loaded: msg.loaded, total: msg.total });
+        return;
+      }
+      if (msg.type === "result-blob-url") {
+        // Streaming large-file result — output is a Blob URL for direct download
+        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = msg.url ?? null;
+        setProgress(null);
+        if (msg.error) {
+          setError(msg.error);
+          setHasLargeOutput(false);
+        } else {
+          setError(null);
+          setHasLargeOutput(true);
+          setOutput("");
+          largeOutputRef.current = null;
+        }
         return;
       }
       applyResult(msg.result, msg.error);
@@ -201,10 +220,15 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   };
 
   const handleFile = (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      setError("File too large. Maximum supported size is 2 GB.");
+      return;
+    }
     setFileName(file.name);
     setFileSize(file.size);
     setHasLargeOutput(false);
     largeOutputRef.current = null;
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
 
     const newDir: Direction = file.name.endsWith(".json")
       ? "json-to-xml"
@@ -248,14 +272,20 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   };
 
   const handleDownload = () => {
-    const content = largeOutputRef.current ?? output;
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
     a.download = outputFilename(fileName ?? "converted", targetFormat);
-    a.click();
-    URL.revokeObjectURL(url);
+    if (blobUrlRef.current) {
+      // Streaming output: use existing blob URL directly
+      a.href = blobUrlRef.current;
+      a.click();
+    } else {
+      const content = largeOutputRef.current ?? output;
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const handleSample = () => {
@@ -277,6 +307,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     setHasLargeOutput(false);
     largeOutputRef.current = null;
     currentFileRef.current = null;
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
   };
 
@@ -346,7 +377,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
         <div className="flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-4 py-2 text-amber-300 text-sm">
           <span>⚠</span>
           <span>
-            Large file ({formatSize(fileSize)}) — conversion runs off the main thread so the page stays responsive.
+            Large file ({formatSize(fileSize)}) — streaming conversion runs off the main thread. Output will download automatically when complete.
           </span>
         </div>
       )}
@@ -448,7 +479,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                   {progress.phase === "reading" ? "Reading file…" : "Converting…"}
                 </p>
                 <div className="w-full max-w-xs flex flex-col gap-2">
-                  {progress.phase === "reading" ? (
+                  {(progress.phase === "reading" || progress.loaded !== undefined) ? (
                     <>
                       <div className="w-full bg-slate-700 rounded-full h-2">
                         <div
@@ -456,7 +487,11 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                           style={{ width: `${progress.percent}%` }}
                         />
                       </div>
-                      <p className="text-slate-500 text-xs text-center">{progress.percent}%</p>
+                      <p className="text-slate-500 text-xs text-center">
+                        {progress.loaded !== undefined && progress.total !== undefined
+                          ? `${formatSize(progress.loaded)} of ${formatSize(progress.total)} (${progress.percent}%)`
+                          : `${progress.percent}%`}
+                      </p>
                     </>
                   ) : (
                     <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">

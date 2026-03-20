@@ -16,15 +16,18 @@ export default function Header({ currentSlug }: { currentSlug?: string }) {
           </span>
         </div>
 
-        <a
-          href="https://buymeacoffee.com/mathamagician"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <span>☕</span>
-          <span className="hidden sm:inline">Buy me a coffee</span>
-        </a>
+        <div className="flex items-center gap-3">
+          <div id="google_translate_element" className="text-sm" />
+          <a
+            href="https://buymeacoffee.com/mathamagician"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <span>☕</span>
+            <span className="hidden sm:inline">Buy me a coffee</span>
+          </a>
+        </div>
       </div>
       <ToolNav currentSlug={currentSlug} />
     </header>

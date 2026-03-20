@@ -17,7 +17,9 @@
     "papaparse": "^5.5.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sax": "^1.6.0",
     "sql-formatter": "^15.7.2",
+    "stream-json": "^2.0.0",
     "turndown": "^7.2.2"
   },
   "devDependencies": {
@@ -26,6 +28,7 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/sax": "^1.2.7",
     "@types/turndown": "^5.0.6",
     "autoprefixer": "^10.0.1",
     "eslint": "^9",
