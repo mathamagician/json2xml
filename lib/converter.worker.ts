@@ -5,7 +5,7 @@ import { streamXmlToJson } from "./streaming-xml-parser";
 type Direction = "json-to-xml" | "xml-to-json";
 
 // Files above this threshold use the streaming path (chunked read + streaming conversion)
-const STREAM_THRESHOLD = 50 * 1024 * 1024; // 50 MB
+const STREAM_THRESHOLD = 512 * 1024 * 1024; // 512 MB
 
 type InMessage =
   | { type: "convert"; id: number; text: string; direction: Direction }
