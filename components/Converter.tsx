@@ -578,7 +578,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                   {progress.phase === "reading" ? "Reading file…" : "Converting…"}
                 </p>
                 <div className="w-full max-w-xs flex flex-col gap-2">
-                  {(progress.phase === "reading" || progress.loaded !== undefined) ? (
+                  {progress.phase === "reading" ? (
+                    // Reading: show a deterministic progress bar
                     <>
                       <div className="w-full bg-slate-700 rounded-full h-2">
                         <div
@@ -587,15 +588,24 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                         />
                       </div>
                       <p className="text-slate-500 text-xs text-center">
-                        {progress.loaded !== undefined && progress.total !== undefined
-                          ? `${formatSize(progress.loaded)} of ${formatSize(progress.total)} (${progress.percent}%)`
-                          : `${progress.percent}%`}
+                        {`${progress.percent}%`}
                       </p>
                     </>
                   ) : (
-                    <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                      <div className="h-2 bg-sky-500 rounded-full w-full animate-pulse" />
-                    </div>
+                    // Converting: always animate — CPU-bound gaps freeze a static bar
+                    <>
+                      <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 bg-sky-500 rounded-full"
+                          style={{ width: "40%", animation: "shimmer 1.2s ease-in-out infinite" }}
+                        />
+                      </div>
+                      {progress.loaded !== undefined && progress.total !== undefined && (
+                        <p className="text-slate-500 text-xs text-center">
+                          {`${formatSize(progress.loaded)} of ${formatSize(progress.total)} processed`}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

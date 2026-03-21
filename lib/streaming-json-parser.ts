@@ -13,8 +13,9 @@
  * because the whole object must be parsed at once — arrays are the efficient case.
  */
 
-const INPUT_CHUNK  = 8  * 1024 * 1024; // 8 MB reads
-const OUTPUT_FLUSH = 64 * 1024 * 1024; // flush to Blob every 64 MB of output
+const INPUT_CHUNK  = 8   * 1024 * 1024; // 8 MB reads
+const OUTPUT_FLUSH = 64  * 1024 * 1024; // flush to Blob every 64 MB of output
+const ELEMENT_MAX  = 400 * 1024 * 1024; // skip any single element larger than 400 MB
 
 function readChunk(file: File, start: number, end: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -98,6 +99,7 @@ export async function streamJsonToXml(
   // pendingChunks holds the raw chunks that contain the current in-progress
   // element. Between elements it is empty — no growing buffer string.
   let pendingChunks: string[] = [];
+  let pendingSize = 0;        // total char count of pendingChunks
   let elementLocalStart = 0; // index in pendingChunks[0] where the element begins
 
   let inStr = false;
@@ -133,6 +135,7 @@ export async function streamJsonToXml(
     // If mid-element, accumulate this chunk into pending set
     if (elementDepth > 0) {
       pendingChunks.push(chunk);
+      pendingSize += chunk.length;
     }
 
     for (let i = scanFrom; i < chunk.length; i++) {
@@ -159,6 +162,7 @@ export async function streamJsonToXml(
           elementDepth++;
           elementLocalStart = i;
           pendingChunks = [chunk]; // start fresh — only this chunk so far
+          pendingSize = chunk.length;
 
         } else if (c === "]" || c === "}") {
           // Root container closed
@@ -188,7 +192,26 @@ export async function streamJsonToXml(
         } else if (c === "}" || c === "]") {
           elementDepth--;
           if (elementDepth === 0) {
-            // Element complete — assemble text from pending chunks
+            // Element complete — check size before assembling to avoid V8 string limit
+            if (pendingSize > ELEMENT_MAX) {
+              // Element too large to hold as a single JS string
+              if (!isArray) {
+                // Top-level object: whole file is one element — surface clear error
+                throw new Error(
+                  `This JSON file is a single object (${Math.round(pendingSize / 1024 / 1024)} MB). ` +
+                  `Objects this large cannot be parsed as a single unit. ` +
+                  `For files over 400 MB, use a JSON array format so each element can be streamed individually.`
+                );
+              }
+              // Array element too large — skip it
+              skipped++;
+              pendingChunks = [];
+              pendingSize = 0;
+              elementLocalStart = 0;
+              break;
+            }
+
+            // Assemble element text from pending chunks
             let elemText: string;
             if (pendingChunks.length === 1) {
               // Entirely within one chunk — substring only, no concat
@@ -219,6 +242,7 @@ export async function streamJsonToXml(
             } catch { skipped++; }
 
             pendingChunks = [];
+            pendingSize = 0;
             elementLocalStart = 0;
           }
         }

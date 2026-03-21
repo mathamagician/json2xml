@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes shimmer {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
 @layer base {
   body {
     @apply bg-slate-950 text-slate-100 antialiased;
