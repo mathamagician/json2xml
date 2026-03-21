@@ -3,19 +3,22 @@
  *
  * Key design constraints:
  *  - Input:  reads in 8 MB chunks; never concatenates a growing buffer string.
- *            Chunks that span a single element are kept in a small array and only
- *            joined when that element is complete (so memory = one element at a time).
+ *            Chunks spanning a single element are kept in a small array and only
+ *            joined when that element is complete (memory = one element at a time).
  *  - Output: flushed to a native Blob every 64 MB so the JS heap never holds the
- *            full output as strings.
+ *            full output as a string.
  *
- * Supports top-level JSON arrays (each element → <item>) and top-level objects
- * (each key → a root element). Single-object files > ~512 MB will still fail
- * because the whole object must be parsed at once — arrays are the efficient case.
+ * Supports:
+ *  - Top-level JSON arrays:  each array element   → <item>…</item>
+ *  - Top-level JSON objects: each top-level value → <key>…</key>
+ *    (keys are streamed one at a time so even a 10+ GB object can be processed)
+ *
+ * Individual values > 400 MB are skipped (cannot be held as a single JS string).
  */
 
 const INPUT_CHUNK  = 8   * 1024 * 1024; // 8 MB reads
 const OUTPUT_FLUSH = 64  * 1024 * 1024; // flush to Blob every 64 MB of output
-const ELEMENT_MAX  = 400 * 1024 * 1024; // skip any single element larger than 400 MB
+const ELEMENT_MAX  = 400 * 1024 * 1024; // skip any single value larger than 400 MB
 
 function readChunk(file: File, start: number, end: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -63,13 +66,11 @@ export type StreamResult = {
 export async function streamJsonToXml(
   file: File,
   onProgress: (loaded: number, total: number) => void,
-  // Optional: when provided, each output batch is written via this callback
-  // instead of accumulated in memory (used by File System Access API path).
   onFlush?: (batch: Blob) => Promise<void>
 ): Promise<StreamResult> {
 
-  // ── Output management ───────────────────────────────────────────────────────
-  const blobParts: Blob[] = []; // only used when onFlush is not provided
+  // ── Output management ────────────────────────────────────────────────────────
+  const blobParts: Blob[] = [];
   let outBatch: string[] = [];
   let outBatchBytes = 0;
   let processed = 0;
@@ -95,23 +96,28 @@ export async function streamJsonToXml(
 
   emit('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n');
 
-  // ── Input scanning state ────────────────────────────────────────────────────
-  // pendingChunks holds the raw chunks that contain the current in-progress
-  // element. Between elements it is empty — no growing buffer string.
+  // ── Input scanning state ─────────────────────────────────────────────────────
   let pendingChunks: string[] = [];
-  let pendingSize = 0;        // total char count of pendingChunks
-  let elementLocalStart = 0; // index in pendingChunks[0] where the element begins
+  let pendingSize = 0;
+  let elementLocalStart = 0;
 
   let inStr = false;
   let esc = false;
-  let elementDepth = 0; // 0 = between elements
+  let elementDepth = 0;   // 0 = between elements at root level
 
   let started = false;
   let isArray = false;
   let done = false;
   let bytesRead = 0;
 
-  // Small string for top-level primitives (rare, always tiny)
+  // ── Object-mode state (top-level JSON object) ────────────────────────────────
+  // For a top-level object we stream each key-value pair independently.
+  let inTopLevelKey = false;  // currently reading a top-level key string
+  let topLevelKeyBuf = "";    // accumulates key chars
+  let topLevelKey = "";       // completed key, ready to use for the next value
+  let afterColon = false;     // seen key + ":", value comes next
+
+  // Small buffer for top-level primitive values
   let primBuf = "";
   let inPrimitive = false;
 
@@ -142,108 +148,128 @@ export async function streamJsonToXml(
       const c = chunk[i];
 
       if (esc) { esc = false; continue; }
+
       if (inStr) {
-        if (c === "\\") esc = true;
-        else if (c === '"') inStr = false;
+        if (c === "\\") { esc = true; }
+        else if (c === '"') {
+          inStr = false;
+          if (inTopLevelKey) {
+            // Top-level key string is complete
+            inTopLevelKey = false;
+            topLevelKey = topLevelKeyBuf;
+          }
+        } else if (inTopLevelKey) {
+          topLevelKeyBuf += c;
+        }
         continue;
       }
-      if (c === '"') { inStr = true; continue; }
+
+      if (c === '"') {
+        inStr = true;
+        // Capture top-level object key (depth 0, object mode, before the colon)
+        if (!isArray && elementDepth === 0 && !afterColon) {
+          inTopLevelKey = true;
+          topLevelKeyBuf = "";
+        }
+        continue;
+      }
 
       if (elementDepth === 0) {
-        // ── Between elements ──────────────────────────────────────────────
-        if (c === "{" || c === "[") {
-          // Flush any pending primitive
-          if (inPrimitive && primBuf.trim()) {
-            try { emit(valueToXml("item", JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
-            catch { skipped++; }
-          }
-          primBuf = ""; inPrimitive = false;
+        // ── Between elements / between key-value pairs ──────────────────────
 
-          elementDepth++;
-          elementLocalStart = i;
-          pendingChunks = [chunk]; // start fresh — only this chunk so far
-          pendingSize = chunk.length;
+        if (c === ":") {
+          // Object mode: colon after key → value comes next
+          if (!isArray && topLevelKey) {
+            afterColon = true;
+          }
+
+        } else if (c === "{" || c === "[") {
+          // Start of a complex value (object or array)
+          // Array mode: always an element.
+          // Object mode: only when we've seen the colon (afterColon).
+          if (isArray || afterColon) {
+            // Flush any pending primitive first
+            if (inPrimitive && primBuf.trim()) {
+              const key = isArray ? "item" : topLevelKey;
+              try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
+              catch { skipped++; }
+            }
+            primBuf = ""; inPrimitive = false;
+
+            elementDepth++;
+            elementLocalStart = i;
+            pendingChunks = [chunk];
+            pendingSize = chunk.length;
+            afterColon = false;
+          }
 
         } else if (c === "]" || c === "}") {
           // Root container closed
           if (inPrimitive && primBuf.trim()) {
-            try { emit(valueToXml("item", JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
+            const key = isArray ? "item" : topLevelKey;
+            try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
             catch { skipped++; }
           }
           done = true;
           break;
 
         } else if (c === ",") {
+          // End of an element / key-value pair
           if (inPrimitive && primBuf.trim()) {
-            try { emit(valueToXml("item", JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
+            const key = isArray ? "item" : topLevelKey;
+            try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
             catch { skipped++; }
           }
           primBuf = ""; inPrimitive = false;
+          afterColon = false;
 
         } else if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r") {
-          inPrimitive = true;
-          primBuf += c;
+          // Start of a primitive value (number, boolean, null)
+          // Object mode: only after the colon
+          if (isArray || afterColon) {
+            inPrimitive = true;
+            primBuf += c;
+          }
         }
 
       } else {
-        // ── Inside an element ─────────────────────────────────────────────
+        // ── Inside a complex element ────────────────────────────────────────
         if (c === "{" || c === "[") {
           elementDepth++;
         } else if (c === "}" || c === "]") {
           elementDepth--;
           if (elementDepth === 0) {
-            // Element complete — check size before assembling to avoid V8 string limit
+            // Element complete — guard against oversized elements
             if (pendingSize > ELEMENT_MAX) {
-              // Element too large to hold as a single JS string
-              if (!isArray) {
-                // Top-level object: whole file is one element — surface clear error
-                throw new Error(
-                  `This JSON file is a single object (${Math.round(pendingSize / 1024 / 1024)} MB). ` +
-                  `Objects this large cannot be parsed as a single unit. ` +
-                  `For files over 400 MB, use a JSON array format so each element can be streamed individually.`
-                );
-              }
-              // Array element too large — skip it
               skipped++;
               pendingChunks = [];
               pendingSize = 0;
               elementLocalStart = 0;
-              break;
-            }
-
-            // Assemble element text from pending chunks
-            let elemText: string;
-            if (pendingChunks.length === 1) {
-              // Entirely within one chunk — substring only, no concat
-              elemText = chunk.substring(elementLocalStart, i + 1);
+              // Don't break — continue scanning for more elements
             } else {
-              // Spans multiple chunks — join only what's needed
-              const first  = pendingChunks[0].substring(elementLocalStart);
-              const middle = pendingChunks.slice(1, -1).join(""); // chunks fully inside
-              const last   = chunk.substring(0, i + 1);           // tail of final chunk
-              elemText = first + middle + last;
-            }
+              // Assemble element text from pending chunks
+              let elemText: string;
+              if (pendingChunks.length === 1) {
+                elemText = chunk.substring(elementLocalStart, i + 1);
+              } else {
+                const first  = pendingChunks[0].substring(elementLocalStart);
+                const middle = pendingChunks.slice(1, -1).join("");
+                const last   = chunk.substring(0, i + 1);
+                elemText = first + middle + last;
+              }
 
-            try {
-              const parsed = JSON.parse(elemText);
-              // Non-array root: emit each top-level key then stop
-              if (!isArray && typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-                for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-                  emit(valueToXml(k, v, 1) + "\n");
-                }
+              const key = isArray ? "item" : topLevelKey;
+              try {
+                const parsed = JSON.parse(elemText);
+                emit(valueToXml(key, parsed, 1) + "\n");
                 processed++;
                 if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
-                done = true;
-                break;
-              }
-              emit(valueToXml("item", parsed, 1) + "\n");
-              processed++;
-              if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
-            } catch { skipped++; }
+              } catch { skipped++; }
 
-            pendingChunks = [];
-            pendingSize = 0;
-            elementLocalStart = 0;
+              pendingChunks = [];
+              pendingSize = 0;
+              elementLocalStart = 0;
+            }
           }
         }
       }
@@ -254,7 +280,7 @@ export async function streamJsonToXml(
   await flushOutput();
 
   const blob = onFlush
-    ? new Blob([], { type: "text/xml" }) // output already written via onFlush
+    ? new Blob([], { type: "text/xml" })
     : new Blob(blobParts, { type: "text/xml" });
 
   return { blob, processed, skipped };
