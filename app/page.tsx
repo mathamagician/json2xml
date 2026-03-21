@@ -12,7 +12,7 @@ const jsonLd = {
   name: "JSON2XML — Free JSON ↔ XML Converter",
   url: "https://json2xml.com",
   description:
-    "Free online tool to convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 5 GB (Chrome/Edge) or 3 GB (other browsers). No sign-up, no uploads — 100% private.",
+    "Free online tool to convert JSON to XML or XML to JSON instantly in your browser. Handles files up to 20 GB (Chrome/Edge) or 5 GB (other browsers). No sign-up, no uploads — 100% private.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Any",
   offers: {
@@ -41,7 +41,7 @@ const faqSchemaItems = [
   {
     question: "Can it handle large files?",
     answer:
-      "Yes — the tool handles files up to 5 GB on Chrome/Edge (streams directly to disk) or 3 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
+      "Yes — the tool handles files up to 20 GB on Chrome/Edge (streams directly to disk, no memory limit) or 5 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
   },
 ];
 
@@ -70,7 +70,7 @@ const faqItems: FaqItem[] = [
   {
     question: "Can it handle large files?",
     answer:
-      "Yes — the tool handles files up to 5 GB on Chrome/Edge (streams directly to disk) or 3 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
+      "Yes — the tool handles files up to 20 GB on Chrome/Edge (streams directly to disk, no memory limit) or 5 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive. A progress bar shows reading and conversion status, and very large outputs are delivered as a direct download.",
   },
 ];
 
@@ -95,7 +95,7 @@ export default function Home() {
             Free JSON ↔ XML Converter
           </h1>
           <p className="text-slate-400 max-w-xl mx-auto">
-            Paste, upload, or drag &amp; drop files up to 5 GB. Converts instantly in your
+            Paste, upload, or drag &amp; drop files up to 20 GB (Chrome/Edge) or 5 GB. Converts instantly in your
             browser —{" "}
             <strong className="text-slate-300">your data never leaves your machine.</strong>
           </p>

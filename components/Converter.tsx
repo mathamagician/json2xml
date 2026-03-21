@@ -12,8 +12,9 @@ const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;             // 5 MB    — read f
 const TEXTAREA_MAX          = 10 * 1024 * 1024;            // 10 MB   — don't render output, show download-only
 const SIZE_WARN_BYTES       = 200 * 1024 * 1024;           // 200 MB  — advisory banner
 const FSAPI_THRESHOLD       = 512 * 1024 * 1024;           // 512 MB  — offer File System Access API
-const SIZE_CAUTION_BYTES    = 3  * 1024 * 1024 * 1024;    // 3 GB    — caution banner
-const MAX_FILE_SIZE         = 5  * 1024 * 1024 * 1024;    // 5 GB    — hard cap
+const SIZE_CAUTION_BYTES    = 3  * 1024 * 1024 * 1024;    // 3 GB    — caution banner (non-FSAPI only)
+const MAX_FILE_SIZE         = 5  * 1024 * 1024 * 1024;    // 5 GB    — hard cap (non-FSAPI)
+const FSAPI_MAX_FILE_SIZE   = 20 * 1024 * 1024 * 1024;    // 20 GB   — hard cap (Chrome/Edge FSAPI path)
 
 type Progress = { phase: "reading" | "converting"; percent: number; loaded?: number; total?: number };
 
@@ -266,8 +267,13 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   };
 
   const handleFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      setError("File too large. Maximum supported size is 5 GB.");
+    const effectiveMax = supportsFSAPI ? FSAPI_MAX_FILE_SIZE : MAX_FILE_SIZE;
+    if (file.size > effectiveMax) {
+      setError(
+        supportsFSAPI
+          ? "File too large. Maximum supported size is 20 GB (Chrome/Edge)."
+          : "File too large. Maximum supported size is 5 GB. For larger files, use Chrome or Edge."
+      );
       return;
     }
     setFileName(file.name);
@@ -458,7 +464,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
       )}
 
       {/* File size banners — tiered by severity */}
-      {fileSize !== null && fileSize > SIZE_CAUTION_BYTES && (
+      {fileSize !== null && fileSize > SIZE_CAUTION_BYTES && !supportsFSAPI && (
         <div className="flex items-center gap-2 rounded-lg border border-orange-600 bg-orange-950/40 px-4 py-2 text-orange-300 text-sm">
           <span>⚠</span>
           <span>

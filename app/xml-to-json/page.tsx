@@ -10,7 +10,7 @@ import { faqJsonLd } from "@/lib/tools";
 export const metadata: Metadata = {
   title: "Free XML to JSON Converter Online — json2xml.com",
   description:
-    "Convert XML to JSON instantly in your browser. Handles files up to 5 GB (Chrome/Edge) or 3 GB (other browsers). Free, private, no sign-up — your data never leaves your machine.",
+    "Convert XML to JSON instantly in your browser. Handles files up to 20 GB (Chrome/Edge) or 5 GB (other browsers). Free, private, no sign-up — your data never leaves your machine.",
   keywords: [
     "xml to json",
     "xml to json converter",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Free XML to JSON Converter Online — json2xml.com",
     description:
-      "Convert XML to JSON instantly in your browser. Handles files up to 5 GB (Chrome/Edge) or 3 GB (other browsers). Free, private, no sign-up required.",
+      "Convert XML to JSON instantly in your browser. Handles files up to 20 GB (Chrome/Edge) or 5 GB (other browsers). Free, private, no sign-up required.",
     url: "https://json2xml.com/xml-to-json",
     siteName: "JSON2XML",
     type: "website",
@@ -44,7 +44,7 @@ const jsonLd = {
   name: "XML to JSON Converter — json2xml.com",
   url: "https://json2xml.com/xml-to-json",
   description:
-    "Free online tool to convert XML to JSON instantly in your browser. Handles files up to 5 GB (Chrome/Edge) or 3 GB (other browsers). No sign-up, no uploads — 100% private.",
+    "Free online tool to convert XML to JSON instantly in your browser. Handles files up to 20 GB (Chrome/Edge) or 5 GB (other browsers). No sign-up, no uploads — 100% private.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Any",
   offers: {
@@ -59,7 +59,7 @@ const faqSchemaItems = [
   { question: "Is this XML to JSON converter free?", answer: "Yes — completely free, forever. No sign-up, no account, no usage limits. If you find it useful, a coffee is appreciated but never required." },
   { question: "Is my XML data safe?", answer: "All conversion happens locally in your browser using JavaScript. Your XML is never uploaded to any server. It's safe to use with sensitive or proprietary data." },
   { question: "How are XML attributes handled?", answer: "XML attributes are preserved in the JSON output. By default, attributes are prefixed to distinguish them from child elements, keeping your data structure intact." },
-  { question: "Can it handle large XML files?", answer: "Yes — the tool handles files up to 5 GB on Chrome/Edge (streams directly to disk) or 3 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive." },
+  { question: "Can it handle large XML files?", answer: "Yes — the tool handles files up to 20 GB on Chrome/Edge (streams directly to disk, no memory limit) or 5 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive." },
   { question: "What about XML namespaces?", answer: "Namespace prefixes are preserved in the JSON keys. For example, <soap:Envelope> becomes a key like \"soap:Envelope\" in the output." },
   { question: "Can I convert JSON back to XML?", answer: "Yes — use the direction toggle to switch to JSON → XML mode, or visit the JSON to XML converter at json2xml.com. You can also use the Flip button to swap input and output in one click." },
 ];
@@ -88,7 +88,7 @@ const faqItems: FaqItem[] = [
   {
     question: "Can it handle large XML files?",
     answer:
-      "Yes — the tool handles files up to 5 GB on Chrome/Edge (streams directly to disk) or 3 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive.",
+      "Yes — the tool handles files up to 20 GB on Chrome/Edge (streams directly to disk, no memory limit) or 5 GB on other browsers. Large files are processed off the main thread using Web Workers, so the page stays fully responsive.",
   },
   {
     question: "What about XML namespaces?",
@@ -128,7 +128,7 @@ export default function XmlToJson() {
             Free XML to JSON Converter
           </h1>
           <p className="text-slate-400 max-w-xl mx-auto">
-            Paste, upload, or drag &amp; drop XML files up to 5 GB. Converts instantly in your
+            Paste, upload, or drag &amp; drop XML files up to 20 GB (Chrome/Edge) or 5 GB. Converts instantly in your
             browser —{" "}
             <strong className="text-slate-300">your data never leaves your machine.</strong>
           </p>
