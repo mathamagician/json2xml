@@ -16,9 +16,11 @@
  * Individual values > 400 MB are skipped (cannot be held as a single JS string).
  */
 
-const INPUT_CHUNK  = 8   * 1024 * 1024; // 8 MB reads
-const OUTPUT_FLUSH = 64  * 1024 * 1024; // flush to Blob every 64 MB of output
-const ELEMENT_MAX  = 400 * 1024 * 1024; // skip any single value larger than 400 MB
+const INPUT_CHUNK      = 8   * 1024 * 1024; // 8 MB reads
+const OUTPUT_FLUSH     = 64  * 1024 * 1024; // flush to Blob every 64 MB of output
+const ELEMENT_MAX      = 400 * 1024 * 1024; // skip any single value larger than 400 MB
+const SKIPPED_MAX_RECS = 500;               // max skipped records to save to file
+const SKIPPED_MAX_BYTES = 10 * 1024 * 1024; // max skipped file size (10 MB)
 
 function readChunk(file: File, start: number, end: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -61,6 +63,9 @@ export type StreamResult = {
   blob: Blob;
   processed: number;
   skipped: number;
+  oversized: number;        // elements skipped due to size limit (text not recoverable)
+  skippedBlob?: Blob;       // raw text of parse-error records as a JSON array (capped)
+  skippedTruncated: boolean; // true if skippedBlob was capped before all errors were saved
 };
 
 export async function streamJsonToXml(
@@ -74,7 +79,13 @@ export async function streamJsonToXml(
   let outBatch: string[] = [];
   let outBatchBytes = 0;
   let processed = 0;
-  let skipped = 0;
+  let skipped = 0;      // parse errors (raw text recoverable)
+  let oversized = 0;    // size-limit skips (raw text not recoverable)
+
+  // Skipped records accumulator — capped to avoid memory issues
+  const skippedItems: string[] = [];
+  let skippedItemBytes = 0;
+  let skippedTruncated = false;
 
   async function flushOutput() {
     if (outBatch.length > 0) {
@@ -270,7 +281,17 @@ export async function streamJsonToXml(
     ? new Blob([], { type: "text/xml" })
     : new Blob(blobParts, { type: "text/xml" });
 
-  return { blob, processed, skipped };
+  // Build skipped-records blob (parse errors only; size-exceeded records are unrecoverable)
+  let skippedBlob: Blob | undefined;
+  if (skippedItems.length > 0) {
+    const header = skippedTruncated
+      ? `// WARNING: Truncated — showing first ${skippedItems.length} of ${skipped} skipped records.\n// Records were skipped due to JSON parse errors.\n`
+      : `// ${skipped} record(s) skipped due to JSON parse errors.\n`;
+    const body = "[\n" + skippedItems.join(",\n") + "\n]";
+    skippedBlob = new Blob([header, body], { type: "application/json" });
+  }
+
+  return { blob, processed, skipped, oversized, skippedBlob, skippedTruncated };
 
   // ── Helpers (closures so they share state) ───────────────────────────────────
 
@@ -280,10 +301,19 @@ export async function streamJsonToXml(
 
   function emitPrimitive() {
     const key = currentElementKey();
+    const raw = primBuf.trim();
     try {
-      emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n");
+      emit(valueToXml(key, JSON.parse(raw), 1) + "\n");
       processed++;
-    } catch { skipped++; }
+    } catch {
+      skipped++;
+      if (!skippedTruncated && skippedItems.length < SKIPPED_MAX_RECS && skippedItemBytes < SKIPPED_MAX_BYTES) {
+        skippedItems.push(raw);
+        skippedItemBytes += raw.length;
+      } else if (!skippedTruncated) {
+        skippedTruncated = true;
+      }
+    }
     primBuf = ""; inPrimitive = false;
   }
 
@@ -296,7 +326,8 @@ export async function streamJsonToXml(
 
   async function finishElement(i: number, chunk: string) {
     if (pendingSize > ELEMENT_MAX) {
-      skipped++;
+      // Text not recoverable — buffer was intentionally not kept
+      oversized++;
       pendingChunks = [];
       pendingSize = 0;
       elementLocalStart = 0;
@@ -319,7 +350,16 @@ export async function streamJsonToXml(
       emit(valueToXml(key, parsed, 1) + "\n");
       processed++;
       if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
-    } catch { skipped++; }
+    } catch {
+      skipped++;
+      // Save raw text for the skipped file (capped)
+      if (!skippedTruncated && skippedItems.length < SKIPPED_MAX_RECS && skippedItemBytes < SKIPPED_MAX_BYTES) {
+        skippedItems.push(elemText);
+        skippedItemBytes += elemText.length;
+      } else if (!skippedTruncated) {
+        skippedTruncated = true;
+      }
+    }
 
     pendingChunks = [];
     pendingSize = 0;

@@ -56,13 +56,16 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   const [supportsFSAPI, setSupportsFSAPI] = useState(false);
   const [fsapiSaved, setFsapiSaved] = useState(false);
   const [fsapiFilename, setFsapiFilename] = useState<string | null>(null);
+  const [skippedBlobUrl, setSkippedBlobUrl] = useState<string | null>(null);
+  const [skippedTruncated, setSkippedTruncated] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const largeOutputRef = useRef<string | null>(null);
-  const blobUrlRef = useRef<string | null>(null); // for streaming large-file output
+  const blobUrlRef = useRef<string | null>(null);        // for streaming large-file output
+  const skippedBlobUrlRef = useRef<string | null>(null); // for skipped-records download
   // Hold File ref for large files so direction-change can re-convert
   const currentFileRef = useRef<File | null>(null);
 
@@ -80,6 +83,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
       workerRef.current?.terminate();
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      if (skippedBlobUrlRef.current) URL.revokeObjectURL(skippedBlobUrlRef.current);
     };
   }, []);
 
@@ -149,6 +153,10 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
               ? { processed: msg.processed, skipped: msg.skipped ?? 0 }
               : null
           );
+          if (skippedBlobUrlRef.current) URL.revokeObjectURL(skippedBlobUrlRef.current);
+          skippedBlobUrlRef.current = msg.skippedUrl ?? null;
+          setSkippedBlobUrl(msg.skippedUrl ?? null);
+          setSkippedTruncated(msg.skippedTruncated ?? false);
         }
         return;
       }
@@ -156,6 +164,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
         // Streaming large-file result — output is a Blob URL for direct download
         if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = msg.url ?? null;
+        if (skippedBlobUrlRef.current) URL.revokeObjectURL(skippedBlobUrlRef.current);
+        skippedBlobUrlRef.current = msg.skippedUrl ?? null;
         setProgress(null);
         setConversionWarning(null);
         if (msg.error) {
@@ -172,6 +182,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
               ? { processed: msg.processed, skipped: msg.skipped ?? 0 }
               : null
           );
+          setSkippedBlobUrl(msg.skippedUrl ?? null);
+          setSkippedTruncated(msg.skippedTruncated ?? false);
         }
         return;
       }
@@ -284,6 +296,9 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     setStreamStats(null);
     largeOutputRef.current = null;
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    if (skippedBlobUrlRef.current) { URL.revokeObjectURL(skippedBlobUrlRef.current); skippedBlobUrlRef.current = null; }
+    setSkippedBlobUrl(null);
+    setSkippedTruncated(false);
 
     const newDir: Direction = file.name.endsWith(".json")
       ? "json-to-xml"
@@ -350,6 +365,14 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadSkipped = () => {
+    if (!skippedBlobUrl) return;
+    const a = document.createElement("a");
+    a.href = skippedBlobUrl;
+    a.download = (fileName ? fileName.replace(/\.[^.]+$/, "") : "converted") + "_skipped.json";
+    a.click();
+  };
+
   const handleDownload = () => {
     const a = document.createElement("a");
     a.download = outputFilename(fileName ?? "converted", targetFormat);
@@ -387,11 +410,14 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     largeOutputRef.current = null;
     currentFileRef.current = null;
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    if (skippedBlobUrlRef.current) { URL.revokeObjectURL(skippedBlobUrlRef.current); skippedBlobUrlRef.current = null; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setConversionWarning(null);
     setStreamStats(null);
     setFsapiSaved(false);
     setFsapiFilename(null);
+    setSkippedBlobUrl(null);
+    setSkippedTruncated(false);
   };
 
   const isProcessing = progress !== null;
@@ -632,6 +658,16 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                     )}
                   </p>
                 )}
+                {skippedBlobUrl && streamStats && streamStats.skipped > 0 && (
+                  <div className="flex flex-col items-center gap-1">
+                    <button onClick={handleDownloadSkipped} className="btn-ghost text-xs text-amber-400 hover:text-amber-300">
+                      Download skipped records ({streamStats.skipped.toLocaleString()})
+                    </button>
+                    {skippedTruncated && (
+                      <p className="text-slate-500 text-xs">First 500 skipped records only</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -658,6 +694,16 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                 <button onClick={handleDownload} className="btn-primary text-sm mt-1">
                   Download {targetFormat.toUpperCase()}
                 </button>
+                {skippedBlobUrl && streamStats && streamStats.skipped > 0 && (
+                  <div className="flex flex-col items-center gap-1">
+                    <button onClick={handleDownloadSkipped} className="btn-ghost text-xs text-amber-400 hover:text-amber-300">
+                      Download skipped records ({streamStats.skipped.toLocaleString()})
+                    </button>
+                    {skippedTruncated && (
+                      <p className="text-slate-500 text-xs">First 500 skipped records only</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

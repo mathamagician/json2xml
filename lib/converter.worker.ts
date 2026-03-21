@@ -62,9 +62,10 @@ async function fsapiConvert(
 
   try {
     if (direction === "json-to-xml") {
-      const { processed, skipped } = await streamJsonToXml(file, onProgress, onFlush);
+      const { processed, skipped, oversized, skippedBlob, skippedTruncated } = await streamJsonToXml(file, onProgress, onFlush);
       await writable.close();
-      postMessage({ type: "result-fsapi", id, error: null, processed, skipped });
+      const skippedUrl = skippedBlob ? URL.createObjectURL(skippedBlob) : null;
+      postMessage({ type: "result-fsapi", id, error: null, processed, skipped, oversized, skippedUrl, skippedTruncated });
     } else {
       await streamXmlToJson(file, onProgress, onFlush);
       await writable.close();
@@ -93,11 +94,15 @@ function streamingConvert(id: number, file: File, direction: Direction) {
       const isStreamResult = result && typeof result === "object" && "blob" in result;
       const blob = isStreamResult ? (result as { blob: Blob }).blob : (result as Blob);
       const processed = isStreamResult ? (result as { processed: number }).processed : undefined;
-      const skipped = isStreamResult ? (result as { skipped: number }).skipped : undefined;
+      const skipped   = isStreamResult ? (result as { skipped: number }).skipped : undefined;
+      const oversized = isStreamResult ? (result as { oversized: number }).oversized : undefined;
+      const skippedBlob = isStreamResult ? (result as { skippedBlob?: Blob }).skippedBlob : undefined;
+      const skippedTruncated = isStreamResult ? (result as { skippedTruncated: boolean }).skippedTruncated : false;
 
       const url = URL.createObjectURL(blob);
+      const skippedUrl = skippedBlob ? URL.createObjectURL(skippedBlob) : null;
       const ext = direction === "json-to-xml" ? "xml" : "json";
-      postMessage({ type: "result-blob-url", id, url, ext, error: null, processed, skipped });
+      postMessage({ type: "result-blob-url", id, url, ext, error: null, processed, skipped, oversized, skippedUrl, skippedTruncated });
     })
     .catch((err) => {
       const msg = (err as Error).message;
