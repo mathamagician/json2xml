@@ -8,10 +8,10 @@
  *  - Output: flushed to a native Blob every 64 MB so the JS heap never holds the
  *            full output as a string.
  *
- * Supports:
- *  - Top-level JSON arrays:  each array element   → <item>…</item>
- *  - Top-level JSON objects: each top-level value → <key>…</key>
- *    (keys are streamed one at a time so even a 10+ GB object can be processed)
+ * Supports all common large-file structures:
+ *  - Top-level array:                  [item, item, …]
+ *  - Top-level object:                 {"key": value, …}   (each value streamed separately)
+ *  - Top-level object with array val:  {"key": [item, …]}  (nested array streamed element-by-element)
  *
  * Individual values > 400 MB are skipped (cannot be held as a single JS string).
  */
@@ -103,19 +103,26 @@ export async function streamJsonToXml(
 
   let inStr = false;
   let esc = false;
-  let elementDepth = 0;   // 0 = between elements at root level
+  let elementDepth = 0;   // depth inside current element (0 = between elements)
 
   let started = false;
-  let isArray = false;
+  let isArray = false;    // true when root container is [
   let done = false;
   let bytesRead = 0;
 
-  // ── Object-mode state (top-level JSON object) ────────────────────────────────
-  // For a top-level object we stream each key-value pair independently.
+  // ── Object-mode state (root is {…}) ──────────────────────────────────────────
+  // For a root object we stream each top-level key-value pair independently.
   let inTopLevelKey = false;  // currently reading a top-level key string
   let topLevelKeyBuf = "";    // accumulates key chars
-  let topLevelKey = "";       // completed key, ready to use for the next value
+  let topLevelKey = "";       // completed key for the next value
   let afterColon = false;     // seen key + ":", value comes next
+
+  // ── Nested-array mode ────────────────────────────────────────────────────────
+  // Activated when a top-level object value is itself an array, e.g. {"records":[…]}.
+  // Instead of treating the whole array as one element we emit <records> and stream
+  // its sub-elements individually — crucial for patterns like {"records":[1.5 GB]}.
+  let nestedArrayMode = false; // scanning inside a top-level value array
+  let nestedArrayTag = "";     // XML wrapper tag for the nested array
 
   // Small buffer for top-level primitive values
   let primBuf = "";
@@ -149,12 +156,12 @@ export async function streamJsonToXml(
 
       if (esc) { esc = false; continue; }
 
+      // ── String traversal ────────────────────────────────────────────────────
       if (inStr) {
         if (c === "\\") { esc = true; }
         else if (c === '"') {
           inStr = false;
           if (inTopLevelKey) {
-            // Top-level key string is complete
             inTopLevelKey = false;
             topLevelKey = topLevelKeyBuf;
           }
@@ -167,109 +174,89 @@ export async function streamJsonToXml(
       if (c === '"') {
         inStr = true;
         // Capture top-level object key (depth 0, object mode, before the colon)
-        if (!isArray && elementDepth === 0 && !afterColon) {
+        if (!isArray && !nestedArrayMode && elementDepth === 0 && !afterColon) {
           inTopLevelKey = true;
           topLevelKeyBuf = "";
         }
         continue;
       }
 
+      // ── Between-element logic (depth 0) ─────────────────────────────────────
       if (elementDepth === 0) {
-        // ── Between elements / between key-value pairs ──────────────────────
 
         if (c === ":") {
           // Object mode: colon after key → value comes next
-          if (!isArray && topLevelKey) {
+          if (!isArray && !nestedArrayMode && topLevelKey) {
             afterColon = true;
           }
 
-        } else if (c === "{" || c === "[") {
-          // Start of a complex value (object or array)
-          // Array mode: always an element.
-          // Object mode: only when we've seen the colon (afterColon).
-          if (isArray || afterColon) {
-            // Flush any pending primitive first
-            if (inPrimitive && primBuf.trim()) {
-              const key = isArray ? "item" : topLevelKey;
-              try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
-              catch { skipped++; }
-            }
-            primBuf = ""; inPrimitive = false;
-
-            elementDepth++;
-            elementLocalStart = i;
-            pendingChunks = [chunk];
-            pendingSize = chunk.length;
+        } else if (c === "[") {
+          if (isArray || nestedArrayMode) {
+            // Array/nested-array mode: sub-element starts with [
+            startElement(i, chunk);
+          } else if (afterColon) {
+            // Object mode, value is an array — enter nested-array streaming
+            const tag = sanitizeTag(topLevelKey);
+            emit(`  <${tag}>\n`);
+            nestedArrayMode = true;
+            nestedArrayTag = tag;
             afterColon = false;
           }
 
-        } else if (c === "]" || c === "}") {
-          // Root container closed
-          if (inPrimitive && primBuf.trim()) {
-            const key = isArray ? "item" : topLevelKey;
-            try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
-            catch { skipped++; }
+        } else if (c === "{") {
+          if (isArray || nestedArrayMode || afterColon) {
+            // Flush any pending primitive first
+            if (inPrimitive && primBuf.trim()) {
+              emitPrimitive();
+            }
+            startElement(i, chunk);
+            afterColon = false;
           }
+
+        } else if (c === "]") {
+          if (nestedArrayMode) {
+            // Close the nested array wrapper
+            if (inPrimitive && primBuf.trim()) emitPrimitive();
+            primBuf = ""; inPrimitive = false;
+            emit(`  </${nestedArrayTag}>\n`);
+            if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
+            nestedArrayMode = false;
+            nestedArrayTag = "";
+            afterColon = false;
+          } else {
+            // Root array closed
+            if (inPrimitive && primBuf.trim()) emitPrimitive();
+            done = true;
+            break;
+          }
+
+        } else if (c === "}") {
+          // Root object closed
+          if (inPrimitive && primBuf.trim()) emitPrimitive();
           done = true;
           break;
 
         } else if (c === ",") {
-          // End of an element / key-value pair
-          if (inPrimitive && primBuf.trim()) {
-            const key = isArray ? "item" : topLevelKey;
-            try { emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n"); processed++; }
-            catch { skipped++; }
-          }
+          if (inPrimitive && primBuf.trim()) emitPrimitive();
           primBuf = ""; inPrimitive = false;
-          afterColon = false;
+          if (!nestedArrayMode) afterColon = false;
 
         } else if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r") {
-          // Start of a primitive value (number, boolean, null)
-          // Object mode: only after the colon
-          if (isArray || afterColon) {
+          // Primitive value start (number, boolean, null)
+          if (isArray || nestedArrayMode || afterColon) {
             inPrimitive = true;
             primBuf += c;
           }
         }
 
+      // ── Inside a complex element (depth > 0) ────────────────────────────────
       } else {
-        // ── Inside a complex element ────────────────────────────────────────
         if (c === "{" || c === "[") {
           elementDepth++;
         } else if (c === "}" || c === "]") {
           elementDepth--;
           if (elementDepth === 0) {
-            // Element complete — guard against oversized elements
-            if (pendingSize > ELEMENT_MAX) {
-              skipped++;
-              pendingChunks = [];
-              pendingSize = 0;
-              elementLocalStart = 0;
-              // Don't break — continue scanning for more elements
-            } else {
-              // Assemble element text from pending chunks
-              let elemText: string;
-              if (pendingChunks.length === 1) {
-                elemText = chunk.substring(elementLocalStart, i + 1);
-              } else {
-                const first  = pendingChunks[0].substring(elementLocalStart);
-                const middle = pendingChunks.slice(1, -1).join("");
-                const last   = chunk.substring(0, i + 1);
-                elemText = first + middle + last;
-              }
-
-              const key = isArray ? "item" : topLevelKey;
-              try {
-                const parsed = JSON.parse(elemText);
-                emit(valueToXml(key, parsed, 1) + "\n");
-                processed++;
-                if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
-              } catch { skipped++; }
-
-              pendingChunks = [];
-              pendingSize = 0;
-              elementLocalStart = 0;
-            }
+            await finishElement(i, chunk);
           }
         }
       }
@@ -284,4 +271,58 @@ export async function streamJsonToXml(
     : new Blob(blobParts, { type: "text/xml" });
 
   return { blob, processed, skipped };
+
+  // ── Helpers (closures so they share state) ───────────────────────────────────
+
+  function currentElementKey(): string {
+    return (isArray || nestedArrayMode) ? "item" : topLevelKey;
+  }
+
+  function emitPrimitive() {
+    const key = currentElementKey();
+    try {
+      emit(valueToXml(key, JSON.parse(primBuf.trim()), 1) + "\n");
+      processed++;
+    } catch { skipped++; }
+    primBuf = ""; inPrimitive = false;
+  }
+
+  function startElement(i: number, chunk: string) {
+    elementDepth++;
+    elementLocalStart = i;
+    pendingChunks = [chunk];
+    pendingSize = chunk.length;
+  }
+
+  async function finishElement(i: number, chunk: string) {
+    if (pendingSize > ELEMENT_MAX) {
+      skipped++;
+      pendingChunks = [];
+      pendingSize = 0;
+      elementLocalStart = 0;
+      return;
+    }
+
+    let elemText: string;
+    if (pendingChunks.length === 1) {
+      elemText = chunk.substring(elementLocalStart, i + 1);
+    } else {
+      const first  = pendingChunks[0].substring(elementLocalStart);
+      const middle = pendingChunks.slice(1, -1).join("");
+      const last   = chunk.substring(0, i + 1);
+      elemText = first + middle + last;
+    }
+
+    const key = currentElementKey();
+    try {
+      const parsed = JSON.parse(elemText);
+      emit(valueToXml(key, parsed, 1) + "\n");
+      processed++;
+      if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
+    } catch { skipped++; }
+
+    pendingChunks = [];
+    pendingSize = 0;
+    elementLocalStart = 0;
+  }
 }
