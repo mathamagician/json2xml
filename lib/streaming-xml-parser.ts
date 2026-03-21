@@ -65,7 +65,8 @@ function xmlNodeToJson(node: XmlNode): unknown {
 
 export function streamXmlToJson(
   file: File,
-  onProgress: (loaded: number, total: number) => void
+  onProgress: (loaded: number, total: number) => void,
+  onFlush?: (batch: Blob) => Promise<void>
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const parser = sax.parser(true, { trim: false, normalize: false });
@@ -141,7 +142,13 @@ export function streamXmlToJson(
       }
 
       const output = { [rootName]: rootValue };
-      resolve(new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }));
+      const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+      if (onFlush) {
+        await onFlush(blob);
+        resolve(new Blob([], { type: "application/json" })); // already written
+      } else {
+        resolve(blob);
+      }
     })();
   });
 }

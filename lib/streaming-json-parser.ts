@@ -61,28 +61,35 @@ export type StreamResult = {
 
 export async function streamJsonToXml(
   file: File,
-  onProgress: (loaded: number, total: number) => void
+  onProgress: (loaded: number, total: number) => void,
+  // Optional: when provided, each output batch is written via this callback
+  // instead of accumulated in memory (used by File System Access API path).
+  onFlush?: (batch: Blob) => Promise<void>
 ): Promise<StreamResult> {
 
   // ── Output management ───────────────────────────────────────────────────────
-  const blobParts: Blob[] = [];
+  const blobParts: Blob[] = []; // only used when onFlush is not provided
   let outBatch: string[] = [];
   let outBatchBytes = 0;
   let processed = 0;
   let skipped = 0;
 
-  function flushOutput() {
+  async function flushOutput() {
     if (outBatch.length > 0) {
-      blobParts.push(new Blob(outBatch, { type: "text/xml" }));
+      const batch = new Blob(outBatch, { type: "text/xml" });
       outBatch = [];
       outBatchBytes = 0;
+      if (onFlush) {
+        await onFlush(batch);
+      } else {
+        blobParts.push(batch);
+      }
     }
   }
 
   function emit(s: string) {
     outBatch.push(s);
     outBatchBytes += s.length;
-    if (outBatchBytes >= OUTPUT_FLUSH) flushOutput();
   }
 
   emit('<?xml version="1.0" encoding="UTF-8"?>\n<root>\n');
@@ -202,11 +209,13 @@ export async function streamJsonToXml(
                   emit(valueToXml(k, v, 1) + "\n");
                 }
                 processed++;
+                if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
                 done = true;
                 break;
               }
               emit(valueToXml("item", parsed, 1) + "\n");
               processed++;
+              if (outBatchBytes >= OUTPUT_FLUSH) await flushOutput();
             } catch { skipped++; }
 
             pendingChunks = [];
@@ -218,7 +227,11 @@ export async function streamJsonToXml(
   }
 
   emit("</root>");
-  flushOutput();
+  await flushOutput();
 
-  return { blob: new Blob(blobParts, { type: "text/xml" }), processed, skipped };
+  const blob = onFlush
+    ? new Blob([], { type: "text/xml" }) // output already written via onFlush
+    : new Blob(blobParts, { type: "text/xml" });
+
+  return { blob, processed, skipped };
 }

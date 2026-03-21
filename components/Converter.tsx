@@ -7,11 +7,13 @@ import InputStats from "@/components/InputStats";
 type Direction = "json-to-xml" | "xml-to-json";
 
 // Thresholds
-const WORKER_THRESHOLD = 512 * 1024;             // 512 KB — use worker for typed/pasted text
-const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;   // 5 MB — read file in worker, don't touch main thread
-const TEXTAREA_MAX = 10 * 1024 * 1024;            // 10 MB — don't render output in textarea, show download-only
-const SIZE_WARN_BYTES = 200 * 1024 * 1024;        // 200 MB — show advisory banner
-const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024;    // 2 GB — hard cap
+const WORKER_THRESHOLD    = 512 * 1024;                    // 512 KB  — use worker for typed/pasted text
+const FILE_WORKER_THRESHOLD = 5 * 1024 * 1024;             // 5 MB    — read file in worker
+const TEXTAREA_MAX          = 10 * 1024 * 1024;            // 10 MB   — don't render output, show download-only
+const SIZE_WARN_BYTES       = 200 * 1024 * 1024;           // 200 MB  — advisory banner
+const FSAPI_THRESHOLD       = 512 * 1024 * 1024;           // 512 MB  — offer File System Access API
+const SIZE_CAUTION_BYTES    = 3  * 1024 * 1024 * 1024;    // 3 GB    — caution banner
+const MAX_FILE_SIZE         = 5  * 1024 * 1024 * 1024;    // 5 GB    — hard cap
 
 type Progress = { phase: "reading" | "converting"; percent: number; loaded?: number; total?: number };
 
@@ -50,6 +52,9 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
   const [hasLargeOutput, setHasLargeOutput] = useState(false);
   const [conversionWarning, setConversionWarning] = useState<string | null>(null);
   const [streamStats, setStreamStats] = useState<{ processed: number; skipped: number } | null>(null);
+  const [supportsFSAPI, setSupportsFSAPI] = useState(false);
+  const [fsapiSaved, setFsapiSaved] = useState(false);
+  const [fsapiFilename, setFsapiFilename] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -62,6 +67,11 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
 
   const sourceFormat: Format = direction === "json-to-xml" ? "json" : "xml";
   const targetFormat: Format = direction === "json-to-xml" ? "xml" : "json";
+
+  // Detect File System Access API support (Chrome/Edge only)
+  useEffect(() => {
+    setSupportsFSAPI(typeof window !== "undefined" && "showSaveFilePicker" in window);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -122,6 +132,23 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
             ? "Data errors detected — attempting partial conversion via streaming…"
             : "Output too large for direct render — switching to streaming download…"
         );
+        return;
+      }
+      if (msg.type === "result-fsapi") {
+        setProgress(null);
+        setConversionWarning(null);
+        if (msg.error) {
+          setError(msg.error);
+          setStreamStats(null);
+        } else {
+          setError(null);
+          setFsapiSaved(true);
+          setStreamStats(
+            msg.processed !== undefined
+              ? { processed: msg.processed, skipped: msg.skipped ?? 0 }
+              : null
+          );
+        }
         return;
       }
       if (msg.type === "result-blob-url") {
@@ -238,14 +265,17 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     setDirection(detected === "json" ? "json-to-xml" : "xml-to-json");
   };
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
-      setError("File too large. Maximum supported size is 2 GB.");
+      setError("File too large. Maximum supported size is 5 GB.");
       return;
     }
     setFileName(file.name);
     setFileSize(file.size);
     setHasLargeOutput(false);
+    setFsapiSaved(false);
+    setFsapiFilename(null);
+    setStreamStats(null);
     largeOutputRef.current = null;
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
 
@@ -255,9 +285,33 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
       ? "xml-to-json"
       : direction;
     if (newDir !== direction) setDirection(newDir);
+    const newTargetFormat: Format = newDir === "json-to-xml" ? "xml" : "json";
+
+    // For large files on FSAPI-capable browsers, prompt user to choose save location.
+    // Must be called synchronously from a user gesture (file drop / input click).
+    if (supportsFSAPI && file.size >= FSAPI_THRESHOLD) {
+      try {
+        const suggestedName = outputFilename(file.name, newTargetFormat);
+        const mimeType = newTargetFormat === "xml" ? "text/xml" : "application/json";
+        const fileHandle = await (window as Window & { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> })
+          .showSaveFilePicker({
+            suggestedName,
+            types: [{ description: `${newTargetFormat.toUpperCase()} File`, accept: { [mimeType]: [`.${newTargetFormat}`] } }],
+          });
+        setFsapiFilename(fileHandle.name);
+        currentFileRef.current = file;
+        setInput("");
+        const id = ++requestIdRef.current;
+        const worker = attachWorkerHandler(id);
+        worker.postMessage({ type: "convert-file-fsapi", id, file, direction: newDir, fileHandle });
+        setProgress({ phase: "converting", percent: 0 });
+        return;
+      } catch {
+        // User cancelled the picker — fall through to normal Blob path
+      }
+    }
 
     if (file.size > FILE_WORKER_THRESHOLD) {
-      // Large file: keep textarea empty, read + convert entirely in worker
       currentFileRef.current = file;
       setInput("");
       convertLargeFile(file, newDir);
@@ -278,10 +332,10 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
       e.preventDefault();
       setIsDragging(false);
       const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      if (file) void handleFile(file);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [direction]
+    [direction, supportsFSAPI]
   );
 
   const handleCopy = async () => {
@@ -330,6 +384,8 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setConversionWarning(null);
     setStreamStats(null);
+    setFsapiSaved(false);
+    setFsapiFilename(null);
   };
 
   const isProcessing = progress !== null;
@@ -401,8 +457,16 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
         </div>
       )}
 
-      {/* Large file advisory banner */}
-      {fileSize !== null && fileSize > SIZE_WARN_BYTES && (
+      {/* File size banners — tiered by severity */}
+      {fileSize !== null && fileSize > SIZE_CAUTION_BYTES && (
+        <div className="flex items-center gap-2 rounded-lg border border-orange-600 bg-orange-950/40 px-4 py-2 text-orange-300 text-sm">
+          <span>⚠</span>
+          <span>
+            Very large file ({formatSize(fileSize)}) — this size may exceed available memory depending on your computer. Conversion will proceed but may fail on lower-memory machines.
+          </span>
+        </div>
+      )}
+      {fileSize !== null && fileSize > SIZE_WARN_BYTES && fileSize <= SIZE_CAUTION_BYTES && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-4 py-2 text-amber-300 text-sm">
           <span>⚠</span>
           <span>
@@ -437,7 +501,7 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleFile(f);
+                  if (f) void handleFile(f);
                 }}
               />
             </div>
@@ -531,25 +595,47 @@ export default function Converter({ initialDirection = "json-to-xml" as Directio
               </div>
             )}
 
-            {/* Large output: download-only mode (too big to render in textarea) */}
-            {hasLargeOutput && !isProcessing && (
+            {/* FSAPI saved: file written directly to disk */}
+            {fsapiSaved && !isProcessing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3 px-6">
+                <div className={`text-3xl ${streamStats?.skipped ? "text-amber-400" : "text-sky-400"}`}>
+                  {streamStats?.skipped ? "⚠" : "✓"}
+                </div>
+                <p className="text-slate-200 font-semibold text-sm">Saved to disk</p>
+                {fsapiFilename && (
+                  <p className="text-slate-400 text-xs font-mono truncate max-w-full">{fsapiFilename}</p>
+                )}
+                {streamStats && (
+                  <p className="text-slate-300 text-xs text-center">
+                    {streamStats.processed.toLocaleString()} records converted
+                    {streamStats.skipped > 0 && (
+                      <span className="text-amber-400">
+                        {" "}· {streamStats.skipped.toLocaleString()} skipped (
+                        {((streamStats.skipped / (streamStats.processed + streamStats.skipped)) * 100).toFixed(1)}% errors)
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Blob download mode (large output, no FSAPI) */}
+            {hasLargeOutput && !isProcessing && !fsapiSaved && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 rounded-lg gap-3 px-6">
                 <div className={`text-3xl ${streamStats?.skipped ? "text-amber-400" : "text-sky-400"}`}>
                   {streamStats?.skipped ? "⚠" : "✓"}
                 </div>
                 <p className="text-slate-200 font-semibold text-sm">Conversion complete</p>
                 {streamStats ? (
-                  <div className="text-center">
-                    <p className="text-slate-300 text-xs">
-                      {streamStats.processed.toLocaleString()} records converted
-                      {streamStats.skipped > 0 && (
-                        <span className="text-amber-400">
-                          {" "}· {streamStats.skipped.toLocaleString()} skipped (
-                          {((streamStats.skipped / (streamStats.processed + streamStats.skipped)) * 100).toFixed(1)}% parse errors)
-                        </span>
-                      )}
-                    </p>
-                  </div>
+                  <p className="text-slate-300 text-xs text-center">
+                    {streamStats.processed.toLocaleString()} records converted
+                    {streamStats.skipped > 0 && (
+                      <span className="text-amber-400">
+                        {" "}· {streamStats.skipped.toLocaleString()} skipped (
+                        {((streamStats.skipped / (streamStats.processed + streamStats.skipped)) * 100).toFixed(1)}% parse errors)
+                      </span>
+                    )}
+                  </p>
                 ) : (
                   <p className="text-slate-400 text-xs">Output is too large to preview</p>
                 )}
